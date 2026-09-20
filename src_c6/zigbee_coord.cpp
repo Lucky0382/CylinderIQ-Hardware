@@ -23,7 +23,6 @@
 #include <string.h>
 #include "esp_log.h"
 #include "esp_zigbee_core.h"
-#include "esp_coexist.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -246,9 +245,6 @@ void zigbee_coord_init(void)
     for (int i = 0; i < SWITCH_COUNT; i++) {
         nvs_load_switch((switch_id_t)i);
     }
-
-    // Enable Wi-Fi + IEEE 802.15.4 radio coexistence
-    esp_coex_wifi_i154_enable();
 
     // Initialise Zigbee platform (must be called before esp_zb_init)
     esp_zb_platform_config_t platform_cfg = {
