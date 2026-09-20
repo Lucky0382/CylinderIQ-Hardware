@@ -88,6 +88,7 @@ void wifi_ap_init(void)
     ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N));
     ESP_ERROR_CHECK(esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20));
     ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(78));
 
     // Wait for AP to come up
     xEventGroupWaitBits(s_ap_event_group, AP_STARTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);

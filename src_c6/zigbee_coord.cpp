@@ -223,8 +223,8 @@ static void zigbee_task(void *arg)
     esp_zb_ep_list_add_ep(ep_list, cluster_list, ep_cfg);
     esp_zb_device_register(ep_list);
 
-    // Use all 2.4GHz Zigbee channels (11-26)
-    esp_zb_set_primary_network_channel_set(ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK);
+    // Fix Zigbee coordinator to Channel 25 (2475 MHz) — zero overlap with Wi-Fi Channel 6 (2437 MHz)
+    esp_zb_set_primary_network_channel_set(1 << 25);
 
     ESP_ERROR_CHECK(esp_zb_start(false)); // false = don't erase stored network
 
