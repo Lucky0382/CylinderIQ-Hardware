@@ -130,7 +130,14 @@ static const char s_dashboard_html[] = R"rawliteral(<!DOCTYPE html>
 
   <!-- Zigbee 20A Immersion Switches Panel -->
   <div class="card">
-    <h2>Zigbee 20A Smart Immersion Switches</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+      <h2 style="margin: 0;">Zigbee 20A Smart Immersion Switches</h2>
+      <div style="font-size: 0.85rem; color: var(--muted); display: flex; gap: 10px; align-items: center;">
+        <span>Coordinator: <strong id="coord-status" style="color: var(--warning)">Checking...</strong></span>
+        <span>CH: <strong id="coord-channel">25</strong></span>
+        <span>PAN: <strong id="coord-pan">--</strong></span>
+      </div>
+    </div>
     <div class="grid-2">
       <!-- Top Immersion Switch -->
       <div class="switch-box">
@@ -273,6 +280,22 @@ async function updateSwitches() {
         topState.className = 'status-tag status-off';
       }
 
+      if (data.coordinator_online !== undefined) {
+        const coordEl = document.getElementById('coord-status');
+        if (coordEl) {
+          coordEl.innerText = data.coordinator_online ? 'Ready' : 'Offline';
+          coordEl.style.color = data.coordinator_online ? 'var(--success)' : 'var(--danger)';
+        }
+      }
+      if (data.channel) {
+        const chEl = document.getElementById('coord-channel');
+        if (chEl) chEl.innerText = data.channel;
+      }
+      if (data.pan_id) {
+        const panEl = document.getElementById('coord-pan');
+        if (panEl) panEl.innerText = data.pan_id;
+      }
+
       // Bottom
       const botBadge = document.getElementById('bot-paired-badge');
       const botState = document.getElementById('bot-state-badge');
@@ -303,9 +326,9 @@ async function updatePairState() {
     if (res.ok) {
       const data = await res.json();
       const banner = document.getElementById('pair-banner');
-      if (data.open) {
+      if (data.open && data.remaining_s > 0) {
         banner.classList.add('active');
-        document.getElementById('pair-slot-label').innerText = data.slot || '';
+        document.getElementById('pair-slot-label').innerText = (data.slot || '').toUpperCase();
         document.getElementById('pair-countdown').innerText = (data.remaining_s || 0) + 's';
       } else {
         banner.classList.remove('active');

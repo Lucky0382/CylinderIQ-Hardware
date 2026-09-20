@@ -11,6 +11,7 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "freertos/timers.h"
 #include "lwip/ip4_addr.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -24,6 +25,14 @@ static EventGroupHandle_t s_wifi_event_group;
 static esp_netif_t *s_ap_netif  = NULL;
 static esp_netif_t *s_sta_netif = NULL;
 static char s_sta_ip[32] = {0};
+static TimerHandle_t s_sta_retry_timer = NULL;
+
+static void sta_retry_timer_cb(TimerHandle_t xTimer)
+{
+    (void)xTimer;
+    ESP_LOGI(TAG, "Attempting STA reconnect to Home Wi-Fi...");
+    esp_wifi_connect();
+}
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                 int32_t event_id, void *event_data)
@@ -37,11 +46,12 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
             ESP_LOGI(TAG, "AP client connected — MAC: %02X:%02X:%02X:%02X:%02X:%02X",
                      e->mac[0], e->mac[1], e->mac[2], e->mac[3], e->mac[4], e->mac[5]);
         } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
-            ESP_LOGW(TAG, "STA disconnected from Home Wi-Fi — reconnecting in 5s...");
+            ESP_LOGW(TAG, "STA disconnected from Home Wi-Fi — will retry in 5s");
             s_sta_ip[0] = '\0';
             xEventGroupClearBits(s_wifi_event_group, STA_CONNECTED_BIT);
-            vTaskDelay(pdMS_TO_TICKS(5000));
-            esp_wifi_connect();
+            if (s_sta_retry_timer) {
+                xTimerStart(s_sta_retry_timer, 0);
+            }
         }
     } else if (event_base == IP_EVENT) {
         if (event_id == IP_EVENT_STA_GOT_IP) {
@@ -81,6 +91,14 @@ void wifi_connect_sta(const char *ssid, const char *password)
 
     nvs_save_sta_creds(ssid, password ? password : "");
 
+    // Switch to APSTA mode if currently in pure AP mode
+    wifi_mode_t mode;
+    esp_wifi_get_mode(&mode);
+    if (mode != WIFI_MODE_APSTA) {
+        ESP_LOGI(TAG, "Switching Wi-Fi mode to AP+STA");
+        esp_wifi_set_mode(WIFI_MODE_APSTA);
+    }
+
     wifi_config_t sta_cfg = {};
     strncpy((char *)sta_cfg.sta.ssid, ssid, sizeof(sta_cfg.sta.ssid));
     if (password) {
@@ -104,6 +122,7 @@ bool wifi_get_sta_ip(char *out_ip, size_t max_len)
 void wifi_ap_init(void)
 {
     s_wifi_event_group = xEventGroupCreate();
+    s_sta_retry_timer  = xTimerCreate("sta_retry", pdMS_TO_TICKS(5000), pdFALSE, NULL, sta_retry_timer_cb);
 
     ESP_ERROR_CHECK(esp_netif_init());
     esp_err_t err = esp_event_loop_create_default();
@@ -144,8 +163,13 @@ void wifi_ap_init(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL, NULL));
 
-    // Dual Mode: AP + STA
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+    // Check if saved Home Wi-Fi credentials exist
+    char saved_ssid[32] = {0};
+    char saved_pass[64] = {0};
+    bool has_sta_creds = nvs_load_sta_creds(saved_ssid, sizeof(saved_ssid), saved_pass, sizeof(saved_pass));
+
+    // If no Home Wi-Fi credentials, run in pure AP mode to prevent background channel hopping
+    ESP_ERROR_CHECK(esp_wifi_set_mode(has_sta_creds ? WIFI_MODE_APSTA : WIFI_MODE_AP));
 
     // Configure AP
     wifi_config_t ap_cfg = {};
@@ -163,16 +187,16 @@ void wifi_ap_init(void)
     ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N));
     ESP_ERROR_CHECK(esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20));
     ESP_ERROR_CHECK(esp_wifi_start());
+
+    // Disable Wi-Fi modem sleep completely to prevent missed beacons and dropped connections
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
     esp_wifi_set_max_tx_power(78);
 
     // Wait for AP to come up
     xEventGroupWaitBits(s_wifi_event_group, AP_STARTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
-    ESP_LOGI(TAG, "AP ready — SSID: %s — IP 192.168.4.1", WIFI_AP_SSID);
+    ESP_LOGI(TAG, "AP ready — SSID: %s — IP 192.168.4.1 (Modem sleep: DISABLED)", WIFI_AP_SSID);
 
-    // Check if saved Home Wi-Fi credentials exist
-    char saved_ssid[32] = {0};
-    char saved_pass[64] = {0};
-    if (nvs_load_sta_creds(saved_ssid, sizeof(saved_ssid), saved_pass, sizeof(saved_pass))) {
+    if (has_sta_creds) {
         ESP_LOGI(TAG, "Found saved Home Wi-Fi credentials for: %s. Connecting...", saved_ssid);
         wifi_connect_sta(saved_ssid, saved_pass);
     }

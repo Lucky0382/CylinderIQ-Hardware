@@ -26,6 +26,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "freertos/timers.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -41,6 +42,8 @@ static const char *NVS_PAIRED_KEY[SWITCH_COUNT] = {"top_ok",    "bot_ok"};
 static SemaphoreHandle_t s_state_mutex;
 static zb_switch_t       s_sw[SWITCH_COUNT];
 static zb_pair_state_t   s_pair = {false, SWITCH_TOP, 0};
+static TimerHandle_t     s_pair_timer = NULL;
+static bool              s_coord_ready = false;
 
 // Coordinator endpoint number
 #define COORD_ENDPOINT  1
@@ -88,25 +91,67 @@ static void nvs_clear_switch(switch_id_t sw)
     nvs_close(h);
 }
 
+// ── Pair window countdown timer callback ───────────────────────
+static void pair_timer_cb(TimerHandle_t xTimer)
+{
+    (void)xTimer;
+    xSemaphoreTake(s_state_mutex, portMAX_DELAY);
+    if (s_pair.remaining_s > 0) {
+        s_pair.remaining_s--;
+    }
+    if (s_pair.remaining_s == 0) {
+        s_pair.open = false;
+        if (s_pair_timer) {
+            xTimerStop(s_pair_timer, 0);
+        }
+        ESP_LOGI(TAG, "Permit join window expired");
+    }
+    xSemaphoreGive(s_state_mutex);
+}
+
 // ── Device join handler ────────────────────────────────────────
 
 static void handle_device_joined(uint16_t short_addr, const uint8_t *ieee)
 {
     xSemaphoreTake(s_state_mutex, portMAX_DELAY);
 
-    if (!s_pair.open) {
-        ESP_LOGW(TAG, "Device joined but pair window closed — ignoring 0x%04X", short_addr);
+    // If device is already paired to a slot, ignore duplicate join
+    if (s_sw[SWITCH_TOP].paired && s_sw[SWITCH_TOP].short_addr == short_addr) {
+        ESP_LOGI(TAG, "Device 0x%04X already paired as TOP", short_addr);
+        xSemaphoreGive(s_state_mutex);
+        return;
+    }
+    if (s_sw[SWITCH_BOTTOM].paired && s_sw[SWITCH_BOTTOM].short_addr == short_addr) {
+        ESP_LOGI(TAG, "Device 0x%04X already paired as BOTTOM", short_addr);
         xSemaphoreGive(s_state_mutex);
         return;
     }
 
-    switch_id_t slot = s_pair.target;
+    switch_id_t slot;
+    if (s_pair.open) {
+        slot = s_pair.target;
+    } else if (!s_sw[SWITCH_TOP].paired) {
+        slot = SWITCH_TOP;
+        ESP_LOGI(TAG, "Auto-assigning joining device to unpaired TOP slot");
+    } else if (!s_sw[SWITCH_BOTTOM].paired) {
+        slot = SWITCH_BOTTOM;
+        ESP_LOGI(TAG, "Auto-assigning joining device to unpaired BOTTOM slot");
+    } else {
+        ESP_LOGW(TAG, "Both slots already paired — ignoring joining device 0x%04X", short_addr);
+        xSemaphoreGive(s_state_mutex);
+        return;
+    }
+
     s_sw[slot].short_addr = short_addr;
     memcpy(s_sw[slot].ieee, ieee, 8);
     s_sw[slot].paired = true;
     s_sw[slot].on     = false;
 
-    s_pair.open = false; // close window after one device joins
+    s_pair.open = false; // close window after device joins
+    s_pair.remaining_s = 0;
+    if (s_pair_timer) {
+        xTimerStop(s_pair_timer, 0);
+    }
 
     xSemaphoreGive(s_state_mutex);
 
@@ -136,20 +181,28 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     switch (sig_type) {
 
     case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
-        ESP_LOGI(TAG, "Zigbee stack initialized — forming network");
-        esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_FORMATION);
+        if (esp_zb_bdb_is_factory_new()) {
+            ESP_LOGI(TAG, "Factory new device — forming Zigbee network");
+            esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_FORMATION);
+        } else {
+            s_coord_ready = true;
+            ESP_LOGI(TAG, "Device rebooted — network restored from NVS (channel %d  PAN 0x%04X)",
+                     esp_zb_get_current_channel(),
+                     esp_zb_get_pan_id());
+        }
         break;
 
     case ESP_ZB_BDB_SIGNAL_FORMATION:
         if (err_status == ESP_OK) {
             esp_zb_ieee_addr_t ext_pan;
             esp_zb_get_extended_pan_id(ext_pan);
+            s_coord_ready = true;
             ESP_LOGI(TAG, "Network formed — channel %d  PAN 0x%04X",
                      esp_zb_get_current_channel(),
                      esp_zb_get_pan_id());
             esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
         } else {
-            ESP_LOGE(TAG, "Network formation failed: %s — retrying",
+            ESP_LOGE(TAG, "Network formation failed: %s — retrying in 1s",
                      esp_err_to_name(err_status));
             esp_zb_scheduler_alarm(
                 bdb_start_top_level_commissioning_cb,
@@ -159,16 +212,48 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 
     case ESP_ZB_BDB_SIGNAL_STEERING:
         if (err_status == ESP_OK) {
+            s_coord_ready = true;
             ESP_LOGI(TAG, "Network steering complete — coordinator ready");
+        }
+        break;
+
+    case ESP_ZB_NWK_SIGNAL_PERMIT_JOIN_STATUS:
+        if (err_status == ESP_OK) {
+            uint8_t dur = *(uint8_t *)esp_zb_app_signal_get_params(p_sg_p);
+            if (dur > 0) {
+                ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds",
+                         esp_zb_get_pan_id(), dur);
+            } else {
+                ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is CLOSED", esp_zb_get_pan_id());
+            }
         }
         break;
 
     case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE: {
         esp_zb_zdo_signal_device_annce_params_t *params =
-            (esp_zb_zdo_signal_device_annce_params_t *)
-                esp_zb_app_signal_get_params(p_sg_p);
+            (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
         ESP_LOGI(TAG, "Device announce — short=0x%04X", params->device_short_addr);
         handle_device_joined(params->device_short_addr, params->ieee_addr);
+        break;
+    }
+
+    case ESP_ZB_ZDO_SIGNAL_DEVICE_UPDATE: {
+        esp_zb_zdo_signal_device_update_params_t *params =
+            (esp_zb_zdo_signal_device_update_params_t *)esp_zb_app_signal_get_params(p_sg_p);
+        ESP_LOGI(TAG, "Device update — short=0x%04X status=%d", params->short_addr, params->status);
+        if (params->status == 0 || params->status == 1) {
+            handle_device_joined(params->short_addr, params->device_addr);
+        }
+        break;
+    }
+
+    case ESP_ZB_ZDO_SIGNAL_DEVICE_AUTHORIZED: {
+        esp_zb_zdo_signal_device_authorized_params_t *params =
+            (esp_zb_zdo_signal_device_authorized_params_t *)esp_zb_app_signal_get_params(p_sg_p);
+        ESP_LOGI(TAG, "Device authorized — short=0x%04X status=%d", params->short_addr, params->status);
+        if (params->status == 0) {
+            handle_device_joined(params->short_addr, params->device_addr);
+        }
         break;
     }
 
@@ -260,6 +345,9 @@ void zigbee_coord_init(void)
     // Zigbee task — pinned to core 0, stack 4096, priority 5
     xTaskCreatePinnedToCore(zigbee_task, "zigbee", 4096, NULL, 5, NULL, 0);
 
+    // 1-second periodic software timer for pairing window countdown
+    s_pair_timer = xTimerCreate("pair_tmr", pdMS_TO_TICKS(1000), pdTRUE, NULL, pair_timer_cb);
+
     ESP_LOGI(TAG, "Zigbee coordinator task started");
 }
 
@@ -271,12 +359,26 @@ void zigbee_coord_permit_join(switch_id_t slot, uint8_t duration_s)
     s_pair.remaining_s = duration_s;
     xSemaphoreGive(s_state_mutex);
 
+    if (duration_s > 0 && s_pair_timer) {
+        xTimerReset(s_pair_timer, 0);
+    } else if (s_pair_timer) {
+        xTimerStop(s_pair_timer, 0);
+    }
+
     esp_zb_lock_acquire(portMAX_DELAY);
-    esp_zb_bdb_open_network(duration_s);
+    esp_err_t bdb_err = esp_zb_bdb_open_network(duration_s);
+
+    // Standard Zigbee ZDO broadcast with Trust Center authentication enabled
+    esp_zb_zdo_permit_joining_req_param_t cmd_req = {
+        .dst_nwk_addr    = 0xFFFC, // Broadcast to all routers & coordinator
+        .permit_duration = duration_s,
+        .tc_significance = 1,      // 1 = Trust Center authentication allowed!
+    };
+    esp_zb_zdo_permit_joining_req(&cmd_req, NULL, NULL);
     esp_zb_lock_release();
 
-    ESP_LOGI(TAG, "Permit join: slot=%s duration=%ds",
-             slot == SWITCH_TOP ? "TOP" : "BOTTOM", duration_s);
+    ESP_LOGI(TAG, "Permit join: slot=%s duration=%ds (bdb_open: %s, tc_auth: enabled)",
+             slot == SWITCH_TOP ? "TOP" : "BOTTOM", duration_s, esp_err_to_name(bdb_err));
 }
 
 bool zigbee_coord_switch_set(switch_id_t sw, bool on)
@@ -341,4 +443,11 @@ void zigbee_coord_clear(switch_id_t sw)
     xSemaphoreGive(s_state_mutex);
     nvs_clear_switch(sw);
     ESP_LOGI(TAG, "Switch %s cleared", sw == SWITCH_TOP ? "TOP" : "BOTTOM");
+}
+
+void zigbee_coord_get_network_info(uint16_t *pan_id, uint8_t *channel, bool *online)
+{
+    if (pan_id)  *pan_id  = esp_zb_get_pan_id();
+    if (channel) *channel = esp_zb_get_current_channel();
+    if (online)  *online  = s_coord_ready;
 }

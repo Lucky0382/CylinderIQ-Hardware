@@ -58,7 +58,22 @@ void switch_control_dispatch(const char *method,
         cJSON *root = cJSON_CreateObject();
         cJSON_AddItemToObject(root, "top",    switch_to_json(SWITCH_TOP));
         cJSON_AddItemToObject(root, "bottom", switch_to_json(SWITCH_BOTTOM));
-        cJSON_AddBoolToObject(root, "coordinator_online", true);
+
+        uint16_t pan_id = 0;
+        uint8_t channel = 0;
+        bool online = false;
+        zigbee_coord_get_network_info(&pan_id, &channel, &online);
+
+        cJSON_AddBoolToObject(root, "coordinator_online", online);
+        char pan_str[16];
+        snprintf(pan_str, sizeof(pan_str), "0x%04X", pan_id);
+        cJSON_AddStringToObject(root, "pan_id", pan_str);
+        cJSON_AddNumberToObject(root, "channel", channel);
+
+        zb_pair_state_t ps = zigbee_coord_pair_state();
+        cJSON_AddBoolToObject(root, "permit_join_open", ps.open);
+        cJSON_AddNumberToObject(root, "remaining_s", ps.remaining_s);
+
         *out_body = cJSON_PrintUnformatted(root);
         cJSON_Delete(root);
         *out_status = 200;
@@ -118,14 +133,14 @@ void switch_control_dispatch(const char *method,
     // GET /switch/pair
     if (strcmp(path, "/switch/pair") == 0 && strcmp(method, "GET") == 0) {
         zb_pair_state_t ps = zigbee_coord_pair_state();
-        char resp[96];
+        char resp[128];
         if (ps.open) {
             snprintf(resp, sizeof(resp),
                      "{\"open\":true,\"slot\":\"%s\",\"remaining_s\":%d}",
                      ps.target == SWITCH_TOP ? "top" : "bottom",
                      ps.remaining_s);
         } else {
-            snprintf(resp, sizeof(resp), "{\"open\":false}");
+            snprintf(resp, sizeof(resp), "{\"open\":false,\"remaining_s\":0}");
         }
         *out_status = 200;
         *out_body = strdup(resp);

@@ -10,8 +10,10 @@ CONFIG_PARTITION_TABLE_FILENAME="partitions_4MB.csv"
 # Disable WiFi on C6 (Wi-Fi SoftAP & HTTP Server run entirely on ESP32-S3)
 CONFIG_ESP_WIFI_ENABLED=n
 
-# USB console on C6 (UART0 is USB-Serial)
-CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+# Console on C6 (UART0 is connected to on-board CH343 USB chip)
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_UART_NUM=0
+CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
 
 # ── Zigbee coordinator ────────────────────────────────────────
 # Enable IEEE 802.15.4 radio (100% dedicated RF spectrum, no Wi-Fi coexistence)

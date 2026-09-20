@@ -272,6 +272,8 @@ static void ble_server_start_adv(void)
     struct ble_gap_adv_params adv_params = {};
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;  // undirected connectable
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;  // general discoverable
+    adv_params.itvl_min  = BLE_GAP_ADV_ITVL_MS(150); // 150 ms interval
+    adv_params.itvl_max  = BLE_GAP_ADV_ITVL_MS(250); // 250 ms interval
 
     const char *name  = ble_svc_gap_device_name();
 
