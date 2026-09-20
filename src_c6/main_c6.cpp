@@ -38,7 +38,7 @@ extern "C" void app_main(void)
 
     xTaskCreatePinnedToCore(
         uart_proxy_rx_task, "uart_rx",
-        4096, NULL, 6,
+        4096, NULL, 4,
         NULL, 0);
 
     // ── 2. Zigbee coordinator ────────────────────────────────

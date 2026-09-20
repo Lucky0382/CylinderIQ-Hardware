@@ -46,6 +46,8 @@ static zb_switch_t       s_sw[SWITCH_COUNT];
 static zb_pair_state_t   s_pair = {false, SWITCH_TOP, 0};
 static TimerHandle_t     s_pair_timer = NULL;
 static bool              s_coord_ready = false;
+static uint16_t          s_pan_id = 0xA276;
+static uint8_t           s_channel = 20;
 
 // Coordinator endpoint number
 #define COORD_ENDPOINT  1
@@ -214,13 +216,13 @@ static void user_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t 
         xSemaphoreGive(s_state_mutex);
 
         esp_zb_zdo_bind_req_param_t bind_req = {};
-        esp_zb_ieee_address_by_short(addr, bind_req.dst_address_u.addr_long);
-        esp_zb_get_long_address(bind_req.src_address);
-        bind_req.src_endp      = COORD_ENDPOINT;
+        memcpy(bind_req.src_address, remote_ieee, sizeof(esp_zb_ieee_addr_t));
+        bind_req.src_endp      = endpoint;
         bind_req.cluster_id    = ESP_ZB_ZCL_CLUSTER_ID_ON_OFF;
         bind_req.dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
-        bind_req.dst_endp      = endpoint;
-        bind_req.req_dst_addr  = esp_zb_get_short_address();
+        esp_zb_get_long_address(bind_req.dst_address_u.addr_long);
+        bind_req.dst_endp      = COORD_ENDPOINT;
+        bind_req.req_dst_addr  = addr;
         esp_zb_zdo_device_bind_req(&bind_req, bind_cb, NULL);
     } else {
         ESP_LOGW(TAG, "Find On/Off endpoint on 0x%04X returned status 0x%02X", addr, zdo_status);
@@ -266,7 +268,11 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
                     nvs_clear_switch(SWITCH_BOTTOM);
                     esp_zb_bdb_reset_via_local_action();
                 } else {
+                    xSemaphoreTake(s_state_mutex, portMAX_DELAY);
                     s_coord_ready = true;
+                    s_pan_id      = pan;
+                    s_channel     = cur_ch;
+                    xSemaphoreGive(s_state_mutex);
                     esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
                 }
             }
@@ -277,10 +283,13 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 
     case ESP_ZB_BDB_SIGNAL_FORMATION:
         if (err_status == ESP_OK) {
+            xSemaphoreTake(s_state_mutex, portMAX_DELAY);
             s_coord_ready = true;
+            s_pan_id      = esp_zb_get_pan_id();
+            s_channel     = esp_zb_get_current_channel();
+            xSemaphoreGive(s_state_mutex);
             ESP_LOGI(TAG, "Network formed successfully — channel %d  PAN 0x%04X",
-                     esp_zb_get_current_channel(),
-                     esp_zb_get_pan_id());
+                     s_channel, s_pan_id);
             esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
         } else {
             ESP_LOGE(TAG, "Network formation failed: %s — retrying in 1s",
@@ -293,7 +302,11 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 
     case ESP_ZB_BDB_SIGNAL_STEERING:
         if (err_status == ESP_OK) {
+            xSemaphoreTake(s_state_mutex, portMAX_DELAY);
             s_coord_ready = true;
+            s_pan_id      = esp_zb_get_pan_id();
+            s_channel     = esp_zb_get_current_channel();
+            xSemaphoreGive(s_state_mutex);
             ESP_LOGI(TAG, "Network steering complete — coordinator ready");
         }
         break;
@@ -303,9 +316,9 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
             uint8_t dur = *(uint8_t *)esp_zb_app_signal_get_params(p_sg_p);
             if (dur > 0) {
                 ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds",
-                         esp_zb_get_pan_id(), dur);
+                         s_pan_id, dur);
             } else {
-                ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is CLOSED", esp_zb_get_pan_id());
+                ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is CLOSED", s_pan_id);
             }
         }
         break;
@@ -321,12 +334,12 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 
         // 1. Immediately bind standard endpoint 1 On/Off cluster to coordinator
         esp_zb_zdo_bind_req_param_t bind_req = {};
-        memcpy(bind_req.dst_address_u.addr_long, params->ieee_addr, sizeof(esp_zb_ieee_addr_t));
-        esp_zb_get_long_address(bind_req.src_address);
-        bind_req.src_endp      = COORD_ENDPOINT;
+        memcpy(bind_req.src_address, params->ieee_addr, sizeof(esp_zb_ieee_addr_t));
+        bind_req.src_endp      = 1;
         bind_req.cluster_id    = ESP_ZB_ZCL_CLUSTER_ID_ON_OFF;
         bind_req.dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
-        bind_req.dst_endp      = 1;
+        esp_zb_get_long_address(bind_req.dst_address_u.addr_long);
+        bind_req.dst_endp      = COORD_ENDPOINT;
         bind_req.req_dst_addr  = params->device_short_addr;
         esp_zb_zdo_device_bind_req(&bind_req, bind_cb, NULL);
 
@@ -425,8 +438,8 @@ void zigbee_coord_init(void)
     };
     ESP_ERROR_CHECK(esp_zb_platform_config(&platform_cfg));
 
-    // Zigbee task — pinned to core 0, stack 4096, priority 5
-    xTaskCreatePinnedToCore(zigbee_task, "zigbee", 4096, NULL, 5, NULL, 0);
+    // Zigbee task — pinned to core 0, stack 10240, priority 6
+    xTaskCreatePinnedToCore(zigbee_task, "zigbee", 10240, NULL, 6, NULL, 0);
 
     // 1-second periodic software timer for pairing window countdown
     s_pair_timer = xTimerCreate("pair_tmr", pdMS_TO_TICKS(1000), pdTRUE, NULL, pair_timer_cb);
@@ -531,7 +544,9 @@ void zigbee_coord_clear(switch_id_t sw)
 
 void zigbee_coord_get_network_info(uint16_t *pan_id, uint8_t *channel, bool *online)
 {
-    if (pan_id)  *pan_id  = esp_zb_get_pan_id();
-    if (channel) *channel = esp_zb_get_current_channel();
+    xSemaphoreTake(s_state_mutex, portMAX_DELAY);
+    if (pan_id)  *pan_id  = s_pan_id;
+    if (channel) *channel = s_channel;
     if (online)  *online  = s_coord_ready;
+    xSemaphoreGive(s_state_mutex);
 }
