@@ -1,4 +1,8 @@
 # Name,   Type, SubType, Offset,  Size, Flags
 nvs,      data, nvs,     0x9000,  0x6000,
 phy_init, data, phy,     0xf000,  0x1000,
-factory,  app,  factory, 0x10000, 0x3F0000,
+factory,  app,  factory, 0x10000, 0x200000,
+zigbee,   data, nvs,     0x210000,0x40000,
+zb_storage, data, fat,   0x250000,0x10000,
+zb_fct,     data, fat,   0x260000,0x1000,
+zb_nvram,   data, fat,   0x261000,0x10000,

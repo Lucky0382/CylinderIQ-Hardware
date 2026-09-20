@@ -33,6 +33,18 @@ extern "C" void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
+    // Dedicated Zigbee NVS partition required by esp-zigbee-sdk platform datasets
+    esp_err_t zb_err = nvs_flash_init_partition("zigbee");
+    if (zb_err == ESP_ERR_NVS_NO_FREE_PAGES || zb_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase_partition("zigbee"));
+        zb_err = nvs_flash_init_partition("zigbee");
+    }
+    if (zb_err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize 'zigbee' partition: %s", esp_err_to_name(zb_err));
+    } else {
+        ESP_LOGI(TAG, "Dedicated 'zigbee' NVS partition initialized successfully");
+    }
+
     // ── 1. UART bridge to S3 ─────────────────────────────────
     uart_proxy_init();
 
