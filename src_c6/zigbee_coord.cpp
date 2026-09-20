@@ -162,12 +162,6 @@ static void handle_device_joined(uint16_t short_addr, const uint8_t *ieee)
     s_sw[slot].on       = false;
     s_sw[slot].endpoint = 1; // Default to endpoint 1 until user_find_cb confirms
 
-    s_pair.open = false; // close window after device joins
-    s_pair.remaining_s = 0;
-    if (s_pair_timer) {
-        xTimerStop(s_pair_timer, 0);
-    }
-
     xSemaphoreGive(s_state_mutex);
 
     nvs_save_switch(slot);
@@ -191,6 +185,14 @@ static void bind_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
     (void)user_ctx;
     if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
         ESP_LOGI(TAG, "Device successfully bound to coordinator On/Off cluster!");
+        // Close pairing window only now that device is completely commissioned and bound
+        xSemaphoreTake(s_state_mutex, portMAX_DELAY);
+        s_pair.open        = false;
+        s_pair.remaining_s = 0;
+        if (s_pair_timer) {
+            xTimerStop(s_pair_timer, 0);
+        }
+        xSemaphoreGive(s_state_mutex);
     } else {
         ESP_LOGW(TAG, "Device bind returned status 0x%02X", zdo_status);
     }
@@ -317,7 +319,18 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
                  params->ieee_addr[3], params->ieee_addr[2], params->ieee_addr[1], params->ieee_addr[0]);
         handle_device_joined(params->device_short_addr, params->ieee_addr);
 
-        // Send Match_Desc_req to discover switch endpoint and bind On/Off cluster
+        // 1. Immediately bind standard endpoint 1 On/Off cluster to coordinator
+        esp_zb_zdo_bind_req_param_t bind_req = {};
+        memcpy(bind_req.dst_address_u.addr_long, params->ieee_addr, sizeof(esp_zb_ieee_addr_t));
+        esp_zb_get_long_address(bind_req.src_address);
+        bind_req.src_endp      = COORD_ENDPOINT;
+        bind_req.cluster_id    = ESP_ZB_ZCL_CLUSTER_ID_ON_OFF;
+        bind_req.dst_addr_mode = ESP_ZB_ZDO_BIND_DST_ADDR_MODE_64_BIT_EXTENDED;
+        bind_req.dst_endp      = 1;
+        bind_req.req_dst_addr  = params->device_short_addr;
+        esp_zb_zdo_device_bind_req(&bind_req, bind_cb, NULL);
+
+        // 2. Also query endpoints via Match_Desc_req in case the switch uses an endpoint other than 1
         esp_zb_zdo_match_desc_req_param_t cmd_req = {};
         cmd_req.dst_nwk_addr     = params->device_short_addr;
         cmd_req.addr_of_interest = params->device_short_addr;
@@ -328,20 +341,16 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     case ESP_ZB_ZDO_SIGNAL_DEVICE_UPDATE: {
         esp_zb_zdo_signal_device_update_params_t *params =
             (esp_zb_zdo_signal_device_update_params_t *)esp_zb_app_signal_get_params(p_sg_p);
-        ESP_LOGI(TAG, "Device update — short=0x%04X status=%d", params->short_addr, params->status);
-        if (params->status == 0 || params->status == 1) {
-            handle_device_joined(params->short_addr, params->long_addr);
-        }
+        ESP_LOGI(TAG, "Device update (MAC join in progress) — short=0x%04X status=%d",
+                 params->short_addr, params->status);
         break;
     }
 
     case ESP_ZB_ZDO_SIGNAL_DEVICE_AUTHORIZED: {
         esp_zb_zdo_signal_device_authorized_params_t *params =
             (esp_zb_zdo_signal_device_authorized_params_t *)esp_zb_app_signal_get_params(p_sg_p);
-        ESP_LOGI(TAG, "Device authorized — short=0x%04X auth_status=%d", params->short_addr, params->authorization_status);
-        if (params->authorization_status == 0) {
-            handle_device_joined(params->short_addr, params->long_addr);
-        }
+        ESP_LOGI(TAG, "Device authorized (Trust Center authenticated) — short=0x%04X auth_status=%d",
+                 params->short_addr, params->authorization_status);
         break;
     }
 
