@@ -62,6 +62,7 @@ jobs:
             .pio/build/s3/bootloader.bin
             .pio/build/s3/partitions.bin
             .pio/build/s3/firmware.bin
+            .pio/build/s3/firmware.elf
           retention-days: 7
 
   build-c6:
@@ -120,4 +121,5 @@ jobs:
             .pio/build/c6/bootloader.bin
             .pio/build/c6/partitions.bin
             .pio/build/c6/firmware.bin
+            .pio/build/c6/firmware.elf
           retention-days: 7

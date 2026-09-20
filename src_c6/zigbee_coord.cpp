@@ -32,6 +32,9 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 
+// Set storage partition name for esp-zigbee dataset persistence
+extern "C" void esp_zigbee_set_storage_name(const char *name);
+
 static const char *TAG = "zb_coord";
 
 // ── NVS keys ──────────────────────────────────────────────────
@@ -429,6 +432,9 @@ static void zigbee_task(void *arg)
 {
     (void)arg;
 
+    // Explicitly configure Zigbee stack datasets subsystem to use the dedicated 512KB "zigbee" partition
+    esp_zigbee_set_storage_name("zigbee");
+
     // Coordinator config
     esp_zb_cfg_t zb_cfg = {
         .esp_zb_role        = ESP_ZB_DEVICE_TYPE_COORDINATOR,
@@ -469,6 +475,9 @@ static void zigbee_task(void *arg)
 
 void zigbee_coord_init(void)
 {
+    // Ensure dataset subsystem routes to dedicated partition
+    esp_zigbee_set_storage_name("zigbee");
+
     s_state_mutex = xSemaphoreCreateMutex();
     configASSERT(s_state_mutex);
     memset(s_sw, 0, sizeof(s_sw));
