@@ -20,6 +20,13 @@ static const char *TAG = "uart_bridge";
 // TX mutex — prevents interleaved output from rx_task and push_task
 static SemaphoreHandle_t s_tx_mutex;
 
+// Request to C6 tracking
+static SemaphoreHandle_t s_c6_req_mutex = NULL;
+static SemaphoreHandle_t s_c6_resp_ready = NULL;
+static int               s_c6_resp_status = 500;
+static char             *s_c6_resp_body = NULL;
+static uint32_t          s_c6_req_id = 1;
+
 // Working buffer for incoming line assembly
 #define LINE_BUF_SIZE   4096
 
@@ -31,6 +38,11 @@ void uart_bridge_init(void)
 {
     s_tx_mutex = xSemaphoreCreateMutex();
     configASSERT(s_tx_mutex);
+
+    s_c6_req_mutex  = xSemaphoreCreateMutex();
+    s_c6_resp_ready = xSemaphoreCreateBinary();
+    configASSERT(s_c6_req_mutex);
+    configASSERT(s_c6_resp_ready);
 
     uart_config_t cfg = {
         .baud_rate           = UART_BRIDGE_BAUD,
@@ -143,7 +155,24 @@ void uart_bridge_rx_task(void *arg)
             cJSON *jpath   = cJSON_GetObjectItem(msg, "path");
             cJSON *jbody   = cJSON_GetObjectItem(msg, "body");
 
-            if (!cJSON_IsString(jtype) || strcmp(jtype->valuestring, "req") != 0) {
+            if (!cJSON_IsString(jtype)) {
+                cJSON_Delete(msg);
+                continue;
+            }
+
+            if (strcmp(jtype->valuestring, "res") == 0) {
+                cJSON *jstatus = cJSON_GetObjectItem(msg, "status");
+                cJSON *jbody_res = cJSON_GetObjectItem(msg, "body");
+                s_c6_resp_status = jstatus ? (int)jstatus->valuedouble : 500;
+                if (s_c6_resp_body) free(s_c6_resp_body);
+                s_c6_resp_body = (jbody_res && cJSON_IsString(jbody_res)) ? strdup(jbody_res->valuestring) : strdup("{}");
+                xSemaphoreGive(s_c6_resp_ready);
+                ESP_LOGD(TAG, "RES from C6: status=%d", s_c6_resp_status);
+                cJSON_Delete(msg);
+                continue;
+            }
+
+            if (strcmp(jtype->valuestring, "req") != 0) {
                 cJSON_Delete(msg);
                 ESP_LOGD(TAG, "Ignoring non-request message");
                 continue;
@@ -222,3 +251,69 @@ void uart_bridge_push_task(void *arg)
         }
     }
 }
+
+// ──────────────────────────────────────────────────────────────
+// uart_bridge_request_c6 — forward switch requests to C6
+// ──────────────────────────────────────────────────────────────
+
+bool uart_bridge_request_c6(const char *method,
+                            const char *path,
+                            const char *body,
+                            int        *out_status,
+                            char      **out_body)
+{
+    if (!s_c6_req_mutex) {
+        *out_status = 503;
+        *out_body = NULL;
+        return false;
+    }
+
+    if (xSemaphoreTake(s_c6_req_mutex, pdMS_TO_TICKS(500)) != pdTRUE) {
+        ESP_LOGW(TAG, "C6 request mutex timeout");
+        *out_status = 503;
+        *out_body   = NULL;
+        return false;
+    }
+
+    uint32_t req_id = s_c6_req_id++ & 0xFFFF;
+    cJSON *req = cJSON_CreateObject();
+    cJSON_AddStringToObject(req, "type",   "req");
+    cJSON_AddNumberToObject(req, "id",     (double)req_id);
+    cJSON_AddStringToObject(req, "method", method);
+    cJSON_AddStringToObject(req, "path",   path);
+    cJSON_AddStringToObject(req, "body",   body ? body : "");
+    char *req_str = cJSON_PrintUnformatted(req);
+    cJSON_Delete(req);
+
+    if (!req_str) {
+        xSemaphoreGive(s_c6_req_mutex);
+        *out_status = 500;
+        *out_body   = NULL;
+        return false;
+    }
+
+    // Flush any leftover semaphore
+    xSemaphoreTake(s_c6_resp_ready, 0);
+    if (s_c6_resp_body) {
+        free(s_c6_resp_body);
+        s_c6_resp_body = NULL;
+    }
+
+    uart_bridge_send(req_str);
+    free(req_str);
+
+    bool got_resp = (xSemaphoreTake(s_c6_resp_ready, pdMS_TO_TICKS(500)) == pdTRUE);
+    if (got_resp) {
+        *out_status = s_c6_resp_status;
+        *out_body   = s_c6_resp_body;   // caller takes ownership
+        s_c6_resp_body = NULL;
+    } else {
+        ESP_LOGD(TAG, "C6 response timeout for %s %s", method, path);
+        *out_status = 504;
+        *out_body   = NULL;
+    }
+
+    xSemaphoreGive(s_c6_req_mutex);
+    return got_resp;
+}
+

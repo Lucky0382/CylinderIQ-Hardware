@@ -14,9 +14,11 @@
 #include "api_handlers.h"
 #include "ble_server.h"
 #include "calculations.h"
+#include "http_server.h"
 #include "nvs_store.h"
 #include "sensors.h"
 #include "uart_bridge.h"
+#include "wifi_ap.h"
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -88,7 +90,13 @@ extern "C" void app_main(void)
     // ── 3. UART bridge ───────────────────────────────────────
     uart_bridge_init();
 
-    // ── 4. BLE server ────────────────────────────────────────
+    // ── 4. WiFi SoftAP ───────────────────────────────────────
+    wifi_ap_init();
+
+    // ── 5. HTTP server ───────────────────────────────────────
+    http_server_start();
+
+    // ── 6. BLE server ────────────────────────────────────────
     // NimBLE host task is started internally by ble_server_init().
     ble_server_init();
 

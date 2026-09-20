@@ -45,6 +45,15 @@ void uart_bridge_push_task(void *arg);
 // Safe to call from any task — uses internal mutex.
 void uart_bridge_send(const char *json_str);
 
+// Send a request to C6 (for Zigbee switch control) and wait for response.
+// Returns true if response received within timeout, false on timeout/failure.
+// If true, *out_status holds HTTP status and *out_body holds heap-allocated JSON (caller frees).
+bool uart_bridge_request_c6(const char *method,
+                            const char *path,
+                            const char *body,
+                            int        *out_status,
+                            char      **out_body);
+
 #ifdef __cplusplus
 }
 #endif
