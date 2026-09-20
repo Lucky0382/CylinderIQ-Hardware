@@ -1,0 +1,36 @@
+# CylinderIQ Hub V2 — sdkconfig.defaults.s3 (ESP32-S3 specific)
+
+# Flash
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+
+# OPI PSRAM (8MB, octal)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_SPIRAM_BOOT_INIT=y
+CONFIG_SPIRAM_IGNORE_NOTFOUND=y
+
+# NVS
+CONFIG_NVS_ASSERT_ERROR_CHECK=n
+
+# OneWire GPIO — allow GPIO interrupts from task context
+CONFIG_GPIO_CTRL_FUNC_IN_IRAM=y
+
+# DS18B20 needs relatively long stack for sensor task
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+
+# Disable WiFi on S3 (not used — S3 is air-gapped, talks via UART + BLE)
+CONFIG_ESP_WIFI_ENABLED=n
+
+# NimBLE BLE stack (no Bluedroid — lighter RAM footprint)
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=3
+CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=4096
+# No bonding required — pairing capability stays at default (present but unused)
+
+# USB serial/JTAG for debug (UART0 used by USB bridge on S3-DevKitC)
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG_ENABLED=y

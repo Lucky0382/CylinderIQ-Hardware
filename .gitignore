@@ -1,0 +1,14 @@
+.pio/
+.claude/
+*.bin
+*.elf
+*.o
+*.a
+!components/esp-zigbee-lib/lib/**/*.a
+*.d
+sdkconfig.c6
+sdkconfig.s3
+components_with_manifests_list.temp
+managed_components.cmake
+local_components.temp.yml
+

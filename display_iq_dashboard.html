@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DisplayIQ 10x Enterprise UI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #090d14;
+      --panel-bg: rgba(20, 26, 38, 0.75);
+      --panel-border: rgba(255, 255, 255, 0.12);
+      --text-white: #ffffff;
+      --text-muted: #8e9bb0;
+      --cyan-neon: #00f2ff;
+      --blue-neon: #0077ff;
+      --orange-neon: #ff8800;
+      --red-neon: #ff2a2a;
+      --green-neon: #22e666;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-white);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 24px;
+      background-image: 
+        radial-gradient(ellipse at 50% 30%, rgba(255, 50, 50, 0.08) 0%, transparent 60%),
+        radial-gradient(ellipse at 50% 80%, rgba(0, 150, 255, 0.08) 0%, transparent 60%);
+    }
+
+    /* TOP HEADER BAR */
+    .header-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 52px;
+      margin-bottom: 16px;
+    }
+
+    .logo-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      width: 28px;
+      height: 28px;
+      background: radial-gradient(circle at 30% 30%, #ff5555, #ff0022);
+      border-radius: 50%;
+      box-shadow: 0 0 15px rgba(255, 0, 34, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-text {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .vpp-status-pill {
+      background: rgba(15, 23, 34, 0.8);
+      border: 1px solid rgba(34, 230, 102, 0.35);
+      border-radius: 30px;
+      padding: 8px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--green-neon);
+      box-shadow: 0 0 20px rgba(34, 230, 102, 0.15);
+    }
+
+    .grid-freq-box {
+      background: rgba(20, 26, 38, 0.75);
+      border: 1px solid var(--panel-border);
+      border-radius: 12px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    .grid-freq-box span {
+      color: var(--green-neon);
+      font-family: 'JetBrains Mono', monospace;
+      margin-left: 6px;
+    }
+
+    /* MAIN 3-COLUMN WORKSPACE */
+    .workspace {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 280px 1fr 280px;
+      gap: 20px;
+      align-items: center;
+      position: relative;
+    }
+
+    /* GLASS CARDS */
+    .glass-card {
+      background: var(--panel-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--panel-border);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      position: relative;
+      z-index: 5;
+    }
+
+    .card-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    /* ARC GAUGES */
+    .gauge-wrapper {
+      position: relative;
+      width: 140px;
+      height: 140px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .gauge-svg {
+      width: 100%;
+      height: 100%;
+      transform: rotate(-90deg);
+    }
+
+    .gauge-bg {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.08);
+      stroke-width: 10;
+    }
+
+    .gauge-progress {
+      fill: none;
+      stroke-width: 10;
+      stroke-linecap: round;
+      stroke-dasharray: 377;
+      stroke-dashoffset: 120;
+      transition: stroke-dashoffset 0.5s ease;
+    }
+
+    .gauge-val {
+      position: absolute;
+      font-size: 24px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .badge-status {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      background: rgba(34, 230, 102, 0.2);
+      color: var(--green-neon);
+      border: 1px solid rgba(34, 230, 102, 0.4);
+    }
+
+    .badge-status.alert {
+      background: rgba(255, 42, 42, 0.25);
+      color: var(--red-neon);
+      border-color: rgba(255, 42, 42, 0.5);
+    }
+
+    /* CENTER 3D CYLINDER */
+    .cylinder-viewport {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .cylinder-3d {
+      width: 220px;
+      height: 420px;
+      position: relative;
+      border-radius: 110px / 30px;
+      box-shadow: 0 0 50px rgba(255, 50, 50, 0.25);
+    }
+
+    /* TOP METALLIC CAP */
+    .cap-top {
+      position: absolute;
+      top: -15px;
+      left: 0;
+      width: 220px;
+      height: 35px;
+      background: radial-gradient(ellipse at 50% 30%, #5a6578, #2a313d 70%, #151921 100%);
+      border: 2px solid #6b788e;
+      border-radius: 50%;
+      z-index: 10;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+    }
+
+    /* BOTTOM METALLIC CAP */
+    .cap-bottom {
+      position: absolute;
+      bottom: -15px;
+      left: 0;
+      width: 220px;
+      height: 35px;
+      background: radial-gradient(ellipse at 50% 70%, #404957, #1c212b 70%, #0d1015 100%);
+      border: 2px solid #4f5b6e;
+      border-radius: 50%;
+      z-index: 2;
+    }
+
+    /* CYLINDER CORE BODY GRADIENT */
+    .cylinder-body {
+      position: absolute;
+      inset: 0;
+      border-radius: 100px;
+      background: linear-gradient(
+        180deg,
+        #ff0033 0%,
+        #ff5500 25%,
+        #ffaa00 50%,
+        #00d4ff 75%,
+        #0055ff 100%
+      );
+      overflow: hidden;
+      border: 2px solid rgba(255,255,255,0.2);
+      box-shadow: 
+        inset -15px 0 30px rgba(0, 0, 0, 0.6),
+        inset 15px 0 20px rgba(255, 255, 255, 0.2),
+        0 0 40px rgba(255, 0, 50, 0.3);
+    }
+
+    /* PARTICLES OVERLAY */
+    .particles-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0.7;
+    }
+
+    /* IN-TANK TEMP LABELS */
+    .temp-label-top {
+      position: absolute;
+      top: 35px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 26px;
+      font-weight: 800;
+      color: #ffffff;
+      text-shadow: 0 0 10px rgba(0,0,0,0.8);
+      z-index: 12;
+    }
+
+    .temp-label-bot {
+      position: absolute;
+      bottom: 35px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 24px;
+      font-weight: 800;
+      color: #ffffff;
+      text-shadow: 0 0 10px rgba(0,0,0,0.8);
+      z-index: 12;
+    }
+
+    /* SVG TRACE CONNECTORS */
+    .trace-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    /* BOTTOM KPI STRIP */
+    .kpi-strip {
+      background: var(--panel-bg);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--panel-border);
+      border-radius: 20px;
+      padding: 16px 32px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+      margin-top: 16px;
+    }
+
+    .kpi-item {
+      text-align: center;
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .kpi-val {
+      font-size: 28px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .kpi-val span {
+      font-size: 16px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    /* CONFIG MODAL */
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 8, 14, 0.92);
+      backdrop-filter: blur(20px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .modal-card {
+      width: 500px;
+      background: rgba(20, 26, 38, 0.95);
+      border: 1px solid var(--panel-border);
+      border-radius: 24px;
+      padding: 32px;
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .modal-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #fff;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .btn-save {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      border: none;
+      background: linear-gradient(135deg, var(--blue-neon), var(--cyan-neon));
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- CONFIG MODAL -->
+  <div id="configModal" class="modal" style="display:none">
+    <div class="modal-card">
+      <div class="modal-title">Live Sensor Entity Mapper</div>
+      <div class="modal-sub">Connected to HA <code>192.168.0.33:8123</code>. Select your exact sensors below:</div>
+
+      <div class="form-group">
+        <label>Home Assistant Token</label>
+        <input id="haToken" type="password" placeholder="Paste HA Long-Lived Token...">
+      </div>
+
+      <div class="form-group">
+        <label>Hot Outlet Sensor (Top)</label>
+        <select id="selHot"></select>
+      </div>
+
+      <div class="form-group">
+        <label>Mains Cold Inlet Sensor (Bottom)</label>
+        <select id="selCold"></select>
+      </div>
+
+      <div class="form-group">
+        <label>Tank Inlet Post-NRV Sensor</label>
+        <select id="selNrv"></select>
+      </div>
+
+      <div class="form-group">
+        <label>Tundish Discharge Sensor</label>
+        <select id="selTundish"></select>
+      </div>
+
+      <button class="btn-save" onclick="saveConfig()">Save & Connect Live</button>
+    </div>
+  </div>
+
+  <!-- HEADER -->
+  <header class="header-bar">
+    <div class="logo-group">
+      <div class="logo-icon">🔥</div>
+      <div class="logo-text">DisplayIQ</div>
+    </div>
+
+    <div class="vpp-status-pill">
+      <div style="width:8px;height:8px;border-radius:50%;background:var(--green-neon);box-shadow:0 0 8px var(--green-neon)"></div>
+      <span id="vppText">GridAssist VPP Status - ABSORBING SOLAR PV 3.0kW</span>
+    </div>
+
+    <div class="grid-freq-box">
+      Grid Freq <span id="freqVal">50.01Hz</span>
+      <button style="background:none;border:none;color:var(--cyan-neon);font-size:11px;cursor:pointer;margin-left:10px" onclick="openConfig()">Config</button>
+    </div>
+  </header>
+
+  <!-- WORKSPACE -->
+  <div class="workspace">
+
+    <!-- SVG TRACE CONNECTOR CANVAS -->
+    <svg class="trace-canvas">
+      <path d="M 280 120 L 400 120" stroke="var(--cyan-neon)" stroke-width="2" fill="none" opacity="0.6"/>
+      <path d="M 280 300 L 380 300 L 380 260 L 400 260" stroke="var(--cyan-neon)" stroke-width="2" fill="none" opacity="0.6"/>
+      <path opacity="0.6" d="M 620 200 L 520 200" stroke="var(--orange-neon)" stroke-width="2" fill="none"/>
+      <path opacity="0.6" d="M 620 340 L 520 340" stroke="var(--cyan-neon)" stroke-width="2" fill="none"/>
+    </svg>
+
+    <!-- LEFT COLUMN CARDS -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      
+      <!-- MAINS INLET -->
+      <div class="glass-card">
+        <div class="card-label">Mains Inlet</div>
+        <div class="gauge-wrapper">
+          <svg class="gauge-svg" viewBox="0 0 140 140">
+            <circle class="gauge-bg" cx="70" cy="70" r="60"/>
+            <circle class="gauge-progress" cx="70" cy="70" r="60" stroke="var(--cyan-neon)"/>
+          </svg>
+          <div id="valCold" class="gauge-val" style="color:var(--cyan-neon)">14.2°C</div>
+        </div>
+      </div>
+
+      <!-- TANK INLET POST-NRV -->
+      <div class="glass-card">
+        <div class="card-label">Tank Inlet Post-NRV</div>
+        <div class="gauge-wrapper">
+          <svg class="gauge-svg" viewBox="0 0 140 140">
+            <circle class="gauge-bg" cx="70" cy="70" r="60"/>
+            <circle class="gauge-progress" cx="70" cy="70" r="60" stroke="var(--cyan-neon)" style="stroke-dashoffset:140"/>
+          </svg>
+          <div id="valNrv" class="gauge-val" style="color:var(--cyan-neon)">15.1°C</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- CENTER 3D CYLINDER -->
+    <div class="cylinder-viewport">
+      <div class="cylinder-3d">
+        <div class="cap-top"></div>
+        <div class="cylinder-body">
+          <canvas id="particleCanvas" class="particles-canvas"></canvas>
+          <div id="labelTop" class="temp-label-top">62°C</div>
+          <div id="labelBot" class="temp-label-bot">20°C</div>
+        </div>
+        <div class="cap-bottom"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN CARDS -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- SAFETYIQ DIAGNOSTICS -->
+      <div class="glass-card" style="padding:14px 18px">
+        <div class="card-label" style="text-align:left;margin-bottom:8px">SafetyIQ Diagnostic</div>
+        
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12px">
+          <span>Leak Rope</span>
+          <span class="badge-status">DRY</span>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:12px">
+          <span>PRV Delta-T</span>
+          <span id="badgeTundish" class="badge-status">NORMAL</span>
+        </div>
+      </div>
+
+      <!-- HOT OUTLET -->
+      <div class="glass-card">
+        <div class="card-label">Hot Outlet</div>
+        <div class="gauge-wrapper">
+          <svg class="gauge-svg" viewBox="0 0 140 140">
+            <circle class="gauge-bg" cx="70" cy="70" r="60"/>
+            <circle class="gauge-progress" cx="70" cy="70" r="60" stroke="var(--orange-neon)" style="stroke-dashoffset:80"/>
+          </svg>
+          <div id="valHot" class="gauge-val" style="color:var(--orange-neon)">43.3°C</div>
+        </div>
+      </div>
+
+      <!-- TUNDISH DISCHARGE -->
+      <div class="glass-card">
+        <div class="card-label">Tundish Discharge</div>
+        <div class="gauge-wrapper">
+          <svg class="gauge-svg" viewBox="0 0 140 140">
+            <circle class="gauge-bg" cx="70" cy="70" r="60"/>
+            <circle class="gauge-progress" cx="70" cy="70" r="60" stroke="var(--cyan-neon)" style="stroke-dashoffset:160"/>
+          </svg>
+          <div id="valTundish" class="gauge-val" style="color:var(--cyan-neon)">21.4°C</div>
+        </div>
+        <div style="text-align:center;margin-top:-6px">
+          <span id="badgeTundish2" class="badge-status">NORMAL</span>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- BOTTOM KPI STRIP -->
+  <div class="kpi-strip">
+    <div class="kpi-item">
+      <div class="kpi-label">Usable Hot Water</div>
+      <div id="kpiVol" class="kpi-val">142 <span>L</span></div>
+    </div>
+
+    <div class="kpi-item">
+      <div class="kpi-label">Stored Energy</div>
+      <div id="kpiKwh" class="kpi-val">4.35 <span>kWh</span></div>
+    </div>
+
+    <div class="kpi-item">
+      <div class="kpi-label">Tariff Savings</div>
+      <div class="kpi-val" style="color:var(--green-neon)">44<span>%</span></div>
+    </div>
+  </div>
+
+  <script>
+    let socket = null;
+    let msgId = 1;
+    let allSensors = [];
+
+    const savedHost = localStorage.getItem('displayiq_ha_host') || '192.168.0.33:8123';
+    const savedToken = localStorage.getItem('displayiq_ha_token') || '';
+
+    let entityHot = localStorage.getItem('displayiq_entity_hot') || '';
+    let entityCold = localStorage.getItem('displayiq_entity_cold') || '';
+    let entityNrv = localStorage.getItem('displayiq_entity_nrv') || '';
+    let entityTundish = localStorage.getItem('displayiq_entity_tundish') || '';
+
+    if (!savedToken) openConfig();
+    else connectWS(savedHost, savedToken);
+
+    function openConfig() { document.getElementById('configModal').style.display = 'flex'; }
+
+    function saveConfig() {
+      const token = document.getElementById('haToken').value.trim();
+      entityHot = document.getElementById('selHot').value;
+      entityCold = document.getElementById('selCold').value;
+      entityNrv = document.getElementById('selNrv').value;
+      entityTundish = document.getElementById('selTundish').value;
+
+      localStorage.setItem('displayiq_ha_token', token);
+      localStorage.setItem('displayiq_entity_hot', entityHot);
+      localStorage.setItem('displayiq_entity_cold', entityCold);
+      localStorage.setItem('displayiq_entity_nrv', entityNrv);
+      localStorage.setItem('displayiq_entity_tundish', entityTundish);
+
+      document.getElementById('configModal').style.display = 'none';
+      connectWS(savedHost, token);
+    }
+
+    function connectWS(host, token) {
+      const wsUrl = `ws://${host}/api/websocket`;
+      socket = new WebSocket(wsUrl);
+
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'auth_required') socket.send(JSON.stringify({ type: 'auth', access_token: token }));
+        else if (data.type === 'auth_ok') {
+          socket.send(JSON.stringify({ id: msgId++, type: 'subscribe_events', event_type: 'state_changed' }));
+          socket.send(JSON.stringify({ id: msgId++, type: 'get_states' }));
+        } else if (data.type === 'result' && Array.isArray(data.result)) {
+          allSensors = data.result.filter(e => e.entity_id.startsWith('sensor.'));
+          populateDropdowns();
+          data.result.forEach(updateState);
+        } else if (data.type === 'event' && data.event && data.event.data) {
+          updateState(data.event.data.new_state);
+        }
+      };
+    }
+
+    function populateDropdowns() {
+      ['selHot', 'selCold', 'selNrv', 'selTundish'].forEach(id => {
+        const sel = document.getElementById(id);
+        const cur = localStorage.getItem(`displayiq_entity_${id.replace('sel', '').toLowerCase()}`);
+        sel.innerHTML = '<option value="">-- Select Sensor --</option>';
+        allSensors.forEach(s => {
+          const name = s.attributes.friendly_name ? `${s.attributes.friendly_name} (${s.entity_id})` : s.entity_id;
+          const opt = document.createElement('option');
+          opt.value = s.entity_id;
+          opt.innerText = name;
+          if (s.entity_id === cur) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      });
+    }
+
+    function updateState(s) {
+      if (!s) return;
+      const id = s.entity_id;
+      const val = parseFloat(s.state);
+      if (isNaN(val)) return;
+
+      if (id === entityHot) {
+        document.getElementById('valHot').innerText = `${val.toFixed(1)}°C`;
+        document.getElementById('labelTop').innerText = `${Math.round(val)}°C`;
+        recalc();
+      } else if (id === entityCold) {
+        document.getElementById('valCold').innerText = `${val.toFixed(1)}°C`;
+        document.getElementById('labelBot').innerText = `${Math.round(val)}°C`;
+        recalc();
+      } else if (id === entityNrv) {
+        document.getElementById('valNrv').innerText = `${val.toFixed(1)}°C`;
+      } else if (id === entityTundish) {
+        document.getElementById('valTundish').innerText = `${val.toFixed(1)}°C`;
+        if (val > 30) {
+          document.getElementById('badgeTundish').className = 'badge-status alert';
+          document.getElementById('badgeTundish').innerText = 'ALERT';
+          document.getElementById('badgeTundish2').className = 'badge-status alert';
+          document.getElementById('badgeTundish2').innerText = 'PRV DISCHARGE';
+        } else {
+          document.getElementById('badgeTundish').className = 'badge-status';
+          document.getElementById('badgeTundish').innerText = 'NORMAL';
+          document.getElementById('badgeTundish2').className = 'badge-status';
+          document.getElementById('badgeTundish2').innerText = 'NORMAL';
+        }
+      }
+    }
+
+    function recalc() {
+      const h = parseFloat(document.getElementById('valHot').innerText) || 43.3;
+      const c = parseFloat(document.getElementById('valCold').innerText) || 20.0;
+      const ratio = Math.max(0, Math.min(1, (h - 30) / 30));
+      const vol = Math.round(ratio * 150);
+      const kwh = (vol * 4.184 * (h - c) / 3600).toFixed(2);
+      document.getElementById('kpiVol').innerHTML = `${vol} <span>L</span>`;
+      document.getElementById('kpiKwh').innerHTML = `${kwh} <span>kWh</span>`;
+    }
+
+    // Particle FX in Cylinder
+    const cvs = document.getElementById('particleCanvas');
+    const ctx = cvs.getContext('2d');
+    cvs.width = 220; cvs.height = 420;
+    const pts = Array.from({length: 30}, () => ({
+      x: Math.random() * 220, y: Math.random() * 420,
+      r: Math.random() * 2 + 1, s: Math.random() * 0.8 + 0.2
+    }));
+
+    function drawParticles() {
+      ctx.clearRect(0,0,220,420);
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      pts.forEach(p => {
+        p.y -= p.s;
+        if (p.y < 0) p.y = 420;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      requestAnimationFrame(drawParticles);
+    }
+    drawParticles();
+
+    setInterval(() => {
+      document.getElementById('freqVal').innerText = (50.00 + (Math.random() * 0.04 - 0.02)).toFixed(2) + 'Hz';
+    }, 1500);
+  </script>
+</body>
+</html>
