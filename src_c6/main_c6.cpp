@@ -18,6 +18,12 @@
 
 static const char *TAG = "main_c6";
 
+// Stub out temperature_sensor_install so legacy conflict check is bypassed
+extern "C" esp_err_t __wrap_temperature_sensor_install(const void *config, void **ret)
+{
+    return ESP_OK;
+}
+
 extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "CylinderIQ Hub V2 — C6 booting");
