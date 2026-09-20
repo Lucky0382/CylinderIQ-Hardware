@@ -172,6 +172,14 @@ void switch_control_dispatch(const char *method,
         return;
     }
 
+    // POST /switch/reset_network
+    if (strcmp(path, "/switch/reset_network") == 0 && strcmp(method, "POST") == 0) {
+        zigbee_coord_reset_network();
+        *out_status = 200;
+        *out_body = strdup("{\"ok\":true,\"message\":\"network reset initiated\"}");
+        return;
+    }
+
     ESP_LOGW(TAG, "Unknown route %s %s", method, path);
     *out_status = 404;
     *out_body = strdup("{\"error\":\"not found\"}");

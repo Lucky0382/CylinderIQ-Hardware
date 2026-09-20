@@ -37,6 +37,7 @@ zb_switch_t     zigbee_coord_switch_get(switch_id_t sw);
 zb_pair_state_t zigbee_coord_pair_state(void);
 void            zigbee_coord_clear(switch_id_t sw);
 void            zigbee_coord_get_network_info(uint16_t *pan_id, uint8_t *channel, bool *online);
+void            zigbee_coord_reset_network(void);
 
 #ifdef __cplusplus
 }

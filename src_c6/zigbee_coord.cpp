@@ -23,6 +23,7 @@
 #include <string.h>
 #include "esp_log.h"
 #include "esp_zigbee_core.h"
+#include "esp_zigbee_secur.h"
 #include "ha/esp_zigbee_ha_standard.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -401,6 +402,10 @@ static void zigbee_task(void *arg)
     };
     esp_zb_init(&zb_cfg);
 
+    // Disable TCLK exchange requirement for commercial Tuya / MOES devices
+    // Allows devices to authenticate using standard preconfigured global link key (ZigBeeAlliance09)
+    esp_zb_secur_link_key_exchange_required_set(false);
+
     // Create standard HA On/Off switch endpoint
     // Registers Basic (Server), Identify (Server & Client), and On/Off (Client) clusters
     // so joining devices (MOES switch) find matching clusters and complete commissioning!
@@ -468,19 +473,18 @@ void zigbee_coord_permit_join(switch_id_t slot, uint8_t duration_s)
     }
 
     esp_zb_lock_acquire(portMAX_DELAY);
-    esp_err_t bdb_err = esp_zb_bdb_open_network(duration_s);
-
-    // Standard Zigbee ZDO broadcast with Trust Center authentication enabled
-    esp_zb_zdo_permit_joining_req_param_t cmd_req = {
-        .dst_nwk_addr    = 0xFFFC, // Broadcast to all routers & coordinator
-        .permit_duration = duration_s,
-        .tc_significance = 1,      // 1 = Trust Center authentication allowed!
-    };
-    esp_zb_zdo_permit_joining_req(&cmd_req, NULL, NULL);
+    if (duration_s > 0) {
+        // Reset BDB internal timer by closing first if already open, then open
+        esp_zb_bdb_close_network();
+        esp_err_t bdb_err = esp_zb_bdb_open_network(duration_s);
+        ESP_LOGI(TAG, "Permit join open: slot=%s duration=%ds (bdb_open: %s)",
+                 slot == SWITCH_TOP ? "TOP" : "BOTTOM", duration_s, esp_err_to_name(bdb_err));
+    } else {
+        esp_err_t bdb_err = esp_zb_bdb_close_network();
+        ESP_LOGI(TAG, "Permit join closed: slot=%s (bdb_close: %s)",
+                 slot == SWITCH_TOP ? "TOP" : "BOTTOM", esp_err_to_name(bdb_err));
+    }
     esp_zb_lock_release();
-
-    ESP_LOGI(TAG, "Permit join: slot=%s duration=%ds (bdb_open: %s, tc_auth: enabled)",
-             slot == SWITCH_TOP ? "TOP" : "BOTTOM", duration_s, esp_err_to_name(bdb_err));
 }
 
 bool zigbee_coord_switch_set(switch_id_t sw, bool on)
@@ -556,3 +560,14 @@ void zigbee_coord_get_network_info(uint16_t *pan_id, uint8_t *channel, bool *onl
     if (online)  *online  = s_coord_ready;
     xSemaphoreGive(s_state_mutex);
 }
+
+void zigbee_coord_reset_network(void)
+{
+    ESP_LOGI(TAG, "Resetting Zigbee network and clearing all paired switches...");
+    zigbee_coord_clear(SWITCH_TOP);
+    zigbee_coord_clear(SWITCH_BOTTOM);
+    esp_zb_lock_acquire(portMAX_DELAY);
+    esp_zb_bdb_reset_via_local_action();
+    esp_zb_lock_release();
+}
+
