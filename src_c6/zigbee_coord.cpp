@@ -205,10 +205,16 @@ static void user_find_cb(esp_zb_zdp_status_t zdo_status, uint16_t addr, uint8_t 
     (void)user_ctx;
     if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
         ESP_LOGI(TAG, "Found On/Off endpoint %d on device 0x%04X — initiating binding", endpoint, addr);
+        esp_zb_ieee_addr_t remote_ieee = {};
+        esp_zb_ieee_address_by_short(addr, remote_ieee);
+
         xSemaphoreTake(s_state_mutex, portMAX_DELAY);
         for (int i = 0; i < SWITCH_COUNT; i++) {
             if (s_sw[i].paired && s_sw[i].short_addr == addr) {
                 s_sw[i].endpoint = endpoint;
+                if (remote_ieee[0] != 0 || remote_ieee[7] != 0) {
+                    memcpy(s_sw[i].ieee, remote_ieee, 8);
+                }
                 nvs_save_switch((switch_id_t)i);
                 break;
             }
