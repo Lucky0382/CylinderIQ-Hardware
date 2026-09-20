@@ -268,7 +268,7 @@ bool uart_bridge_request_c6(const char *method,
         return false;
     }
 
-    if (xSemaphoreTake(s_c6_req_mutex, pdMS_TO_TICKS(500)) != pdTRUE) {
+    if (xSemaphoreTake(s_c6_req_mutex, pdMS_TO_TICKS(2500)) != pdTRUE) {
         ESP_LOGW(TAG, "C6 request mutex timeout");
         *out_status = 503;
         *out_body   = NULL;
@@ -302,7 +302,7 @@ bool uart_bridge_request_c6(const char *method,
     uart_bridge_send(req_str);
     free(req_str);
 
-    bool got_resp = (xSemaphoreTake(s_c6_resp_ready, pdMS_TO_TICKS(500)) == pdTRUE);
+    bool got_resp = (xSemaphoreTake(s_c6_resp_ready, pdMS_TO_TICKS(2500)) == pdTRUE);
     if (got_resp) {
         *out_status = s_c6_resp_status;
         *out_body   = s_c6_resp_body;   // caller takes ownership
