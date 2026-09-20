@@ -120,11 +120,22 @@ void switch_control_dispatch(const char *method,
             *out_body = strdup("{\"error\":\"slot must be top or bottom\"}");
             return;
         }
-        zigbee_coord_permit_join(slot, 60);
-        char resp[80];
+        int duration_s = 180;
+        if (body && body[0]) {
+            cJSON *root = cJSON_Parse(body);
+            if (root) {
+                cJSON *jdur = cJSON_GetObjectItem(root, "duration");
+                if (jdur && cJSON_IsNumber(jdur) && jdur->valueint > 0 && jdur->valueint <= 255) {
+                    duration_s = jdur->valueint;
+                }
+                cJSON_Delete(root);
+            }
+        }
+        zigbee_coord_permit_join(slot, (uint8_t)duration_s);
+        char resp[96];
         snprintf(resp, sizeof(resp),
-                 "{\"ok\":true,\"slot\":\"%s\",\"duration_s\":60}",
-                 slot == SWITCH_TOP ? "top" : "bottom");
+                 "{\"ok\":true,\"slot\":\"%s\",\"duration_s\":%d}",
+                 slot == SWITCH_TOP ? "top" : "bottom", duration_s);
         *out_status = 200;
         *out_body = strdup(resp);
         return;

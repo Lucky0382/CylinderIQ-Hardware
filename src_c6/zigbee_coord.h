@@ -21,6 +21,7 @@ typedef struct {
     bool     on;
     uint8_t  ieee[8];
     uint16_t short_addr;
+    uint8_t  endpoint;
 } zb_switch_t;
 
 typedef struct {
