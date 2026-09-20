@@ -123,6 +123,11 @@ static void handle_device_joined(uint16_t short_addr, const uint8_t *ieee)
 // ── Zigbee signal handler ──────────────────────────────────────
 // Called by the Zigbee stack for all network events.
 
+static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
+{
+    esp_zb_bdb_start_top_level_commissioning(mode_mask);
+}
+
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
     uint32_t *p_sg_p     = signal_struct->p_app_signal;
@@ -148,7 +153,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
             ESP_LOGE(TAG, "Network formation failed: %s — retrying",
                      esp_err_to_name(err_status));
             esp_zb_scheduler_alarm(
-                (esp_zb_callback_t)esp_zb_bdb_start_top_level_commissioning,
+                bdb_start_top_level_commissioning_cb,
                 ESP_ZB_BDB_MODE_NETWORK_FORMATION, 1000);
         }
         break;
@@ -224,7 +229,7 @@ static void zigbee_task(void *arg)
     ESP_ERROR_CHECK(esp_zb_start(false)); // false = don't erase stored network
 
     // Main loop — runs forever, processes Zigbee stack events
-    esp_zb_main_loop_iteration();
+    esp_zb_stack_main_loop();
     // Should never return, but just in case:
     vTaskDelete(NULL);
 }
