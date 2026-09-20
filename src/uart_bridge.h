@@ -27,7 +27,7 @@ extern "C" {
 #define UART_BRIDGE_PORT    UART_NUM_1
 #define UART_BRIDGE_TX_PIN  17      // GPIO17 S3→C6
 #define UART_BRIDGE_RX_PIN  18      // GPIO18 C6→S3
-#define UART_BRIDGE_BAUD    921600
+#define UART_BRIDGE_BAUD    115200  // Robust 115200 baud for jumper wire reliability
 #define UART_BRIDGE_BUF     8192    // RX ring buffer size
 
 // Initialise UART1 hardware. Call before starting tasks.

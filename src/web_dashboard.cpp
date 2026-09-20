@@ -283,7 +283,7 @@ async function updateSwitches() {
       if (data.coordinator_online !== undefined) {
         const coordEl = document.getElementById('coord-status');
         if (coordEl) {
-          coordEl.innerText = data.coordinator_online ? 'Ready' : 'Offline';
+          coordEl.innerText = data.coordinator_online ? 'Ready' : 'Offline (Check UART wires)';
           coordEl.style.color = data.coordinator_online ? 'var(--success)' : 'var(--danger)';
         }
       }
@@ -316,8 +316,43 @@ async function updateSwitches() {
         botState.innerText = 'OFF';
         botState.className = 'status-tag status-off';
       }
+
+      // Auto-clear pairing banner if targeted switch is confirmed paired
+      const activeSlot = (document.getElementById('pair-slot-label').innerText || '').toLowerCase();
+      if (activeSlot === 'top' && data.top && data.top.paired && pairInterval) {
+        clearInterval(pairInterval);
+        pairInterval = null;
+        document.getElementById('pair-banner').classList.remove('active');
+      } else if (activeSlot === 'bottom' && data.bottom && data.bottom.paired && pairInterval) {
+        clearInterval(pairInterval);
+        pairInterval = null;
+        document.getElementById('pair-banner').classList.remove('active');
+      }
     }
   } catch(e) {}
+}
+
+let pairInterval = null;
+let localRemaining = 0;
+
+function startLocalCountdown(slot, duration) {
+  localRemaining = duration;
+  const banner = document.getElementById('pair-banner');
+  banner.classList.add('active');
+  document.getElementById('pair-slot-label').innerText = slot.toUpperCase();
+  document.getElementById('pair-countdown').innerText = localRemaining + 's';
+
+  if (pairInterval) clearInterval(pairInterval);
+  pairInterval = setInterval(() => {
+    localRemaining--;
+    if (localRemaining <= 0) {
+      clearInterval(pairInterval);
+      pairInterval = null;
+      banner.classList.remove('active');
+    } else {
+      document.getElementById('pair-countdown').innerText = localRemaining + 's';
+    }
+  }, 1000);
 }
 
 async function updatePairState() {
@@ -325,13 +360,13 @@ async function updatePairState() {
     const res = await fetch('/switch/pair');
     if (res.ok) {
       const data = await res.json();
-      const banner = document.getElementById('pair-banner');
       if (data.open && data.remaining_s > 0) {
-        banner.classList.add('active');
-        document.getElementById('pair-slot-label').innerText = (data.slot || '').toUpperCase();
-        document.getElementById('pair-countdown').innerText = (data.remaining_s || 0) + 's';
-      } else {
-        banner.classList.remove('active');
+        if (!pairInterval) {
+          startLocalCountdown(data.slot || 'top', data.remaining_s);
+        } else {
+          localRemaining = data.remaining_s;
+          document.getElementById('pair-countdown').innerText = localRemaining + 's';
+        }
       }
     }
   } catch(e) {}
@@ -339,13 +374,20 @@ async function updatePairState() {
 
 async function startPair(slot) {
   try {
-    await fetch('/switch/pair', {
+    const res = await fetch('/switch/pair', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({slot: slot})
     });
-    updatePairState();
-  } catch(e) { alert('Pair request failed'); }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert('Coordinator connection issue: ' + (err.error || 'Offline. Please check the 3 UART wires: S3 GPIO17->C6 GPIO5, S3 GPIO18<-C6 GPIO4, and GND->GND.'));
+      return;
+    }
+    startLocalCountdown(slot, 180);
+  } catch(e) {
+    alert('Pair request failed: ' + e);
+  }
 }
 
 async function toggleSwitch(slot, state) {

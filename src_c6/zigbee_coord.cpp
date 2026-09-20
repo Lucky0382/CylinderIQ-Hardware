@@ -321,12 +321,33 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     case ESP_ZB_NWK_SIGNAL_PERMIT_JOIN_STATUS:
         if (err_status == ESP_OK) {
             uint8_t dur = *(uint8_t *)esp_zb_app_signal_get_params(p_sg_p);
+            xSemaphoreTake(s_state_mutex, portMAX_DELAY);
             if (dur > 0) {
-                ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds",
-                         s_pan_id, dur);
+                if (!s_sw[SWITCH_TOP].paired) {
+                    s_pair.open        = true;
+                    s_pair.target      = SWITCH_TOP;
+                    s_pair.remaining_s = dur;
+                    if (s_pair_timer) xTimerReset(s_pair_timer, 0);
+                    ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds — READY TO PAIR TOP SWITCH",
+                             s_pan_id, dur);
+                } else if (!s_sw[SWITCH_BOTTOM].paired) {
+                    s_pair.open        = true;
+                    s_pair.target      = SWITCH_BOTTOM;
+                    s_pair.remaining_s = dur;
+                    if (s_pair_timer) xTimerReset(s_pair_timer, 0);
+                    ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds — READY TO PAIR BOTTOM SWITCH",
+                             s_pan_id, dur);
+                } else {
+                    ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds (both switches paired)",
+                             s_pan_id, dur);
+                }
             } else {
+                s_pair.open        = false;
+                s_pair.remaining_s = 0;
+                if (s_pair_timer) xTimerStop(s_pair_timer, 0);
                 ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is CLOSED", s_pan_id);
             }
+            xSemaphoreGive(s_state_mutex);
         }
         break;
 
