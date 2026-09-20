@@ -79,10 +79,14 @@ void wifi_ap_init(void)
     wifi_config.ap.channel        = WIFI_AP_CHANNEL;
     wifi_config.ap.max_connection = WIFI_AP_MAX_CONN;
     wifi_config.ap.authmode       = WIFI_AUTH_WPA2_PSK;
+    wifi_config.ap.pairwise_cipher = WIFI_CIPHER_TYPE_CCMP;
     wifi_config.ap.pmf_cfg.required = false;
+    wifi_config.ap.pmf_cfg.capable  = false;
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N));
+    ESP_ERROR_CHECK(esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20));
     ESP_ERROR_CHECK(esp_wifi_start());
 
     // Wait for AP to come up

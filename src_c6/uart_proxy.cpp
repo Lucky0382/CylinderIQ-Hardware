@@ -80,9 +80,23 @@ void uart_proxy_rx_task(void *arg)
     int line_pos = 0;
     uint8_t ch;
 
+    uint32_t total_bytes  = 0;
+    uint32_t last_hb_tick = xTaskGetTickCount();
+
     for (;;) {
         int n = uart_read_bytes(UART_PROXY_PORT, &ch, 1, pdMS_TO_TICKS(100));
+
+        // Heartbeat every 10 s so we know if C6 is hearing S3
+        uint32_t now = xTaskGetTickCount();
+        if ((now - last_hb_tick) >= pdMS_TO_TICKS(10000)) {
+            ESP_LOGI(TAG, "RX heartbeat — bytes received from S3 in last 10 s: %lu",
+                     (unsigned long)total_bytes);
+            total_bytes  = 0;
+            last_hb_tick = now;
+        }
+
         if (n <= 0) continue;
+        total_bytes++;
 
         if (ch == '\n' || ch == '\r') {
             if (line_pos == 0) continue;
@@ -118,11 +132,10 @@ void uart_proxy_rx_task(void *arg)
                 s_resp_body = body;
                 xSemaphoreGive(s_resp_ready);
 
-                ESP_LOGD(TAG, "RES status=%d body=%.60s", status, body);
+                ESP_LOGI(TAG, "RES status=%d body=%.60s", status, body);
 
             } else if (strcmp(jtype->valuestring, "push") == 0) {
-                // Unsolicited push from S3 — discard (DisplayIQ polls via HTTP)
-                ESP_LOGD(TAG, "Push received (discarded)");
+                ESP_LOGI(TAG, "UART Push received from S3 — bridge link active!");
             }
 
             cJSON_Delete(msg);

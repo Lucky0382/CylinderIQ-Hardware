@@ -273,24 +273,25 @@ static void ble_server_start_adv(void)
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;  // undirected connectable
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;  // general discoverable
 
-    // Primary advertising data: flags + service UUID (for Flutter scan filter)
+    const char *name  = ble_svc_gap_device_name();
+
+    // Primary advertising data: flags + device name (so name is instantly visible to all scanners)
     struct ble_hs_adv_fields fields = {};
     fields.flags                 = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-    fields.uuids128              = (ble_uuid128_t *)&s_svc_uuid;
-    fields.num_uuids128          = 1;
-    fields.uuids128_is_complete  = 1;
+    fields.name                  = (const uint8_t *)name;
+    fields.name_len              = (uint8_t)strlen(name);
+    fields.name_is_complete      = 1;
 
     int rc = ble_gap_adv_set_fields(&fields);
     if (rc != 0) {
         ESP_LOGW(TAG, "adv_set_fields failed: %d", rc);
     }
 
-    // Scan response: device name (visible in BLE scanner apps)
+    // Scan response: 128-bit service UUID (for app filtering)
     struct ble_hs_adv_fields rsp = {};
-    const char *name  = ble_svc_gap_device_name();
-    rsp.name          = (const uint8_t *)name;
-    rsp.name_len      = (uint8_t)strlen(name);
-    rsp.name_is_complete = 1;
+    rsp.uuids128                 = (ble_uuid128_t *)&s_svc_uuid;
+    rsp.num_uuids128             = 1;
+    rsp.uuids128_is_complete     = 1;
     ble_gap_adv_rsp_set_fields(&rsp);
 
     rc = ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER,
