@@ -1,0 +1,164 @@
+# ==============================================================================
+# CylinderIQ Hub — Home Assistant Integration Package
+# ==============================================================================
+# Drop this file into your Home Assistant /config/packages/cylinderiq.yaml
+# (Ensure 'packages: !include_dir_named packages' is in your configuration.yaml)
+#
+# Replace 192.168.4.1 with cylinderiq.local or your hub's Home LAN IP address.
+# ==============================================================================
+
+rest:
+  - resource: http://192.168.4.1/sensors
+    scan_interval: 5
+    sensor:
+      - name: "CylinderIQ Hot Outlet Temperature"
+        unique_id: "cylinderiq_hot_outlet_temp"
+        value_template: "{{ value_json.hot_outlet | round(1) }}"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        icon: mdi:thermometer-high
+
+      - name: "CylinderIQ Cylinder Inlet Temperature"
+        unique_id: "cylinderiq_cylinder_inlet_temp"
+        value_template: "{{ value_json.cylinder_inlet | round(1) }}"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        icon: mdi:thermometer
+
+      - name: "CylinderIQ Mains Supply Temperature"
+        unique_id: "cylinderiq_mains_supply_temp"
+        value_template: "{{ value_json.mains_supply | round(1) }}"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+        icon: mdi:snowflake
+
+      - name: "CylinderIQ Usable Hot Water"
+        unique_id: "cylinderiq_usable_hot_water"
+        value_template: "{{ value_json.usable_hot_litres | round(0) }}"
+        unit_of_measurement: "L"
+        device_class: volume
+        state_class: measurement
+        icon: mdi:water-boiler
+
+      - name: "CylinderIQ Hot Water Percentage"
+        unique_id: "cylinderiq_hot_water_percentage"
+        value_template: "{{ value_json.hot_water_pct | round(0) }}"
+        unit_of_measurement: "%"
+        state_class: measurement
+        icon: mdi:gauge
+
+      - name: "CylinderIQ Showers Remaining"
+        unique_id: "cylinderiq_showers_remaining"
+        value_template: "{{ value_json.showers_remaining | round(1) }}"
+        state_class: measurement
+        icon: mdi:shower
+
+      - name: "CylinderIQ Baths Remaining"
+        unique_id: "cylinderiq_baths_remaining"
+        value_template: "{{ value_json.baths_remaining | round(1) }}"
+        state_class: measurement
+        icon: mdi:bathtub
+
+      - name: "CylinderIQ Recovery Time"
+        unique_id: "cylinderiq_recovery_time"
+        value_template: "{{ value_json.recovery_min | round(0) }}"
+        unit_of_measurement: "min"
+        device_class: duration
+        state_class: measurement
+        icon: mdi:timer-sand
+
+      - name: "CylinderIQ Cost to Recover"
+        unique_id: "cylinderiq_cost_to_recover"
+        value_template: "{{ value_json.cost_pence | round(1) }}"
+        unit_of_measurement: "p"
+        state_class: measurement
+        icon: mdi:currency-gbp
+
+    binary_sensor:
+      - name: "CylinderIQ Leak Sensor"
+        unique_id: "cylinderiq_leak_sensor"
+        value_template: "{{ value_json.leak_wet }}"
+        device_class: moisture
+        icon: mdi:water-alert
+
+# ------------------------------------------------------------------------------
+# Zigbee 20A Immersion Switches Control
+# ------------------------------------------------------------------------------
+switch:
+  - platform: template
+    switches:
+      cylinderiq_top_immersion:
+        friendly_name: "CylinderIQ Top Immersion (Boost)"
+        unique_id: "cylinderiq_top_immersion_switch"
+        value_template: "{{ is_state('sensor.cylinderiq_top_switch_state', 'on') }}"
+        turn_on:
+          service: rest_command.cylinderiq_top_on
+        turn_off:
+          service: rest_command.cylinderiq_top_off
+        icon_template: >-
+          {% if is_state('sensor.cylinderiq_top_switch_state', 'on') %}
+            mdi:water-boiler
+          {% else %}
+            mdi:water-boiler-off
+          {% endif %}
+
+      cylinderiq_bottom_immersion:
+        friendly_name: "CylinderIQ Bottom Immersion (Base/Off-Peak)"
+        unique_id: "cylinderiq_bottom_immersion_switch"
+        value_template: "{{ is_state('sensor.cylinderiq_bot_switch_state', 'on') }}"
+        turn_on:
+          service: rest_command.cylinderiq_bot_on
+        turn_off:
+          service: rest_command.cylinderiq_bot_off
+        icon_template: >-
+          {% if is_state('sensor.cylinderiq_bot_switch_state', 'on') %}
+            mdi:water-boiler
+          {% else %}
+            mdi:water-boiler-off
+          {% endif %}
+
+# Switch State Polling
+sensor:
+  - platform: rest
+    name: "CylinderIQ Top Switch State"
+    unique_id: "cylinderiq_top_switch_state"
+    resource: http://192.168.4.1/switches
+    scan_interval: 3
+    value_template: "{{ value_json.top.state | default('off') }}"
+
+  - platform: rest
+    name: "CylinderIQ Bottom Switch State"
+    unique_id: "cylinderiq_bot_switch_state"
+    resource: http://192.168.4.1/switches
+    scan_interval: 3
+    value_template: "{{ value_json.bottom.state | default('off') }}"
+
+# REST Commands for On/Off and Pairing
+rest_command:
+  cylinderiq_top_on:
+    url: "http://192.168.4.1/switch/top/on"
+    method: POST
+  cylinderiq_top_off:
+    url: "http://192.168.4.1/switch/top/off"
+    method: POST
+  cylinderiq_bot_on:
+    url: "http://192.168.4.1/switch/bottom/on"
+    method: POST
+  cylinderiq_bot_off:
+    url: "http://192.168.4.1/switch/bottom/off"
+    method: POST
+  cylinderiq_pair_top:
+    url: "http://192.168.4.1/switch/pair"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    payload: '{"slot":"top"}'
+  cylinderiq_pair_bot:
+    url: "http://192.168.4.1/switch/pair"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+    payload: '{"slot":"bottom"}'

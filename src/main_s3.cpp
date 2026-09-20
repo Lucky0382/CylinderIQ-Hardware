@@ -19,6 +19,7 @@
 #include "sensors.h"
 #include "uart_bridge.h"
 #include "wifi_ap.h"
+#include "buttons.h"
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -99,6 +100,9 @@ extern "C" void app_main(void)
     // ── 6. BLE server ────────────────────────────────────────
     // NimBLE host task is started internally by ble_server_init().
     ble_server_init();
+
+    // ── 7. Hardware Commissioning Buttons ─────────────────────
+    buttons_init();
 
     // ── 5-9. FreeRTOS tasks ──────────────────────────────────
     // sensor_task: one-wire is slow (750 ms/cycle), pin to core 0

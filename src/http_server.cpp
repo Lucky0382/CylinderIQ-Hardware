@@ -6,9 +6,12 @@
 #include "http_server.h"
 #include "api_handlers.h"
 #include "uart_bridge.h"
+#include "wifi_ap.h"
+#include "web_dashboard.h"
 
 #include <string.h>
 #include <stdlib.h>
+#include "cJSON.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 
@@ -151,8 +154,47 @@ static esp_err_t handler_switch_pair(httpd_req_t *req)       { return forward_sw
 static esp_err_t handler_get_pair_state(httpd_req_t *req)    { return forward_switch_request(req, "GET");  }
 static esp_err_t handler_switch_clear(httpd_req_t *req)      { return forward_switch_request(req, "POST"); }
 
+// ── Web Dashboard Handlers ─────────────────────────────────────
+static esp_err_t handler_get_dashboard(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html");
+    add_cors_headers(req);
+    const char *html = get_dashboard_html();
+    return httpd_resp_send(req, html, strlen(html));
+}
+
+static esp_err_t handler_post_wifi_connect(httpd_req_t *req)
+{
+    char *body = read_req_body(req);
+    if (!body) {
+        return send_json_response(req, 400, "{\"error\":\"missing body\"}");
+    }
+    cJSON *root = cJSON_Parse(body);
+    free(body);
+    if (!root) {
+        return send_json_response(req, 400, "{\"error\":\"invalid json\"}");
+    }
+    cJSON *j_ssid = cJSON_GetObjectItem(root, "ssid");
+    cJSON *j_pass = cJSON_GetObjectItem(root, "password");
+    if (!j_ssid || !cJSON_IsString(j_ssid)) {
+        cJSON_Delete(root);
+        return send_json_response(req, 400, "{\"error\":\"missing ssid\"}");
+    }
+    const char *ssid = j_ssid->valuestring;
+    const char *pass = (j_pass && cJSON_IsString(j_pass)) ? j_pass->valuestring : "";
+
+    wifi_connect_sta(ssid, pass);
+    cJSON_Delete(root);
+    return send_json_response(req, 200, "{\"ok\":true,\"message\":\"connecting\"}");
+}
+
 // ── Route Table ────────────────────────────────────────────────
 static const httpd_uri_t s_routes[] = {
+    // Web Dashboard (GET / and GET /index.html)
+    { .uri = "/",                  .method = HTTP_GET,  .handler = handler_get_dashboard,           .user_ctx = NULL },
+    { .uri = "/index.html",        .method = HTTP_GET,  .handler = handler_get_dashboard,           .user_ctx = NULL },
+    { .uri = "/wifi/connect",      .method = HTTP_POST, .handler = handler_post_wifi_connect,       .user_ctx = NULL },
+
     // CORS OPTIONS pre-flight
     { .uri = "/*",                 .method = HTTP_OPTIONS, .handler = handler_options,              .user_ctx = NULL },
 
