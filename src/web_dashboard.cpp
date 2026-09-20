@@ -317,16 +317,27 @@ async function updateSwitches() {
         botState.className = 'status-tag status-off';
       }
 
-      // Auto-clear pairing banner if targeted switch is confirmed paired
-      const activeSlot = (document.getElementById('pair-slot-label').innerText || '').toLowerCase();
+      // Success feedback if targeted switch is confirmed paired
+      const slotEl = document.getElementById('pair-slot-label');
+      const activeSlot = slotEl ? (slotEl.innerText || '').toLowerCase() : '';
       if (activeSlot === 'top' && data.top && data.top.paired && pairInterval) {
         clearInterval(pairInterval);
         pairInterval = null;
-        document.getElementById('pair-banner').classList.remove('active');
+        const banner = document.getElementById('pair-banner');
+        banner.style.background = '#064e3b';
+        banner.style.borderColor = '#10b981';
+        banner.style.color = '#ecfdf5';
+        banner.innerHTML = '🎉 <strong>Pairing Success!</strong> TOP switch paired cleanly! Address: <code>' + (data.top.addr || 'Paired') + '</code>';
+        setTimeout(() => { banner.classList.remove('active'); banner.removeAttribute('style'); }, 8000);
       } else if (activeSlot === 'bottom' && data.bottom && data.bottom.paired && pairInterval) {
         clearInterval(pairInterval);
         pairInterval = null;
-        document.getElementById('pair-banner').classList.remove('active');
+        const banner = document.getElementById('pair-banner');
+        banner.style.background = '#064e3b';
+        banner.style.borderColor = '#10b981';
+        banner.style.color = '#ecfdf5';
+        banner.innerHTML = '🎉 <strong>Pairing Success!</strong> BOTTOM switch paired cleanly! Address: <code>' + (data.bottom.addr || 'Paired') + '</code>';
+        setTimeout(() => { banner.classList.remove('active'); banner.removeAttribute('style'); }, 8000);
       }
     }
   } catch(e) {}
@@ -338,19 +349,20 @@ let localRemaining = 0;
 function startLocalCountdown(slot, duration) {
   localRemaining = duration;
   const banner = document.getElementById('pair-banner');
+  banner.removeAttribute('style');
+  banner.innerHTML = '⏳ <strong>Zigbee Pairing Active:</strong> Open network for slot <span id="pair-slot-label" style="text-transform: uppercase;">' + slot.toUpperCase() + '</span>. Put your MOES switch in pairing mode (hold button 5s until LED flashes). <strong id="pair-countdown">' + localRemaining + 's</strong> remaining.';
   banner.classList.add('active');
-  document.getElementById('pair-slot-label').innerText = slot.toUpperCase();
-  document.getElementById('pair-countdown').innerText = localRemaining + 's';
 
   if (pairInterval) clearInterval(pairInterval);
   pairInterval = setInterval(() => {
     localRemaining--;
+    const cdEl = document.getElementById('pair-countdown');
     if (localRemaining <= 0) {
       clearInterval(pairInterval);
       pairInterval = null;
       banner.classList.remove('active');
-    } else {
-      document.getElementById('pair-countdown').innerText = localRemaining + 's';
+    } else if (cdEl) {
+      cdEl.innerText = localRemaining + 's';
     }
   }, 1000);
 }

@@ -188,14 +188,6 @@ static void bind_cb(esp_zb_zdp_status_t zdo_status, void *user_ctx)
     (void)user_ctx;
     if (zdo_status == ESP_ZB_ZDP_STATUS_SUCCESS) {
         ESP_LOGI(TAG, "Device successfully bound to coordinator On/Off cluster!");
-        // Close pairing window only now that device is completely commissioned and bound
-        xSemaphoreTake(s_state_mutex, portMAX_DELAY);
-        s_pair.open        = false;
-        s_pair.remaining_s = 0;
-        if (s_pair_timer) {
-            xTimerStop(s_pair_timer, 0);
-        }
-        xSemaphoreGive(s_state_mutex);
     } else {
         ESP_LOGW(TAG, "Device bind returned status 0x%02X", zdo_status);
     }
@@ -320,7 +312,9 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 
     case ESP_ZB_NWK_SIGNAL_PERMIT_JOIN_STATUS:
         if (err_status == ESP_OK) {
-            uint8_t dur = *(uint8_t *)esp_zb_app_signal_get_params(p_sg_p);
+            uint8_t *p_dur = (uint8_t *)esp_zb_app_signal_get_params(p_sg_p);
+            if (!p_dur) break;
+            uint8_t dur = *p_dur;
             xSemaphoreTake(s_state_mutex, portMAX_DELAY);
             if (dur > 0) {
                 if (!s_sw[SWITCH_TOP].paired) {
@@ -352,8 +346,16 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         break;
 
     case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE: {
+        if (err_status != ESP_OK) {
+            ESP_LOGW(TAG, "Device announce status error: %s", esp_err_to_name(err_status));
+            break;
+        }
         esp_zb_zdo_signal_device_annce_params_t *params =
             (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
+        if (!params) {
+            ESP_LOGW(TAG, "Device announce: null params");
+            break;
+        }
         ESP_LOGI(TAG, "Device announce — short=0x%04X IEEE=%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
                  params->device_short_addr,
                  params->ieee_addr[7], params->ieee_addr[6], params->ieee_addr[5], params->ieee_addr[4],
@@ -380,16 +382,32 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     }
 
     case ESP_ZB_ZDO_SIGNAL_DEVICE_UPDATE: {
+        if (err_status != ESP_OK) {
+            ESP_LOGW(TAG, "Device update status error: %s", esp_err_to_name(err_status));
+            break;
+        }
         esp_zb_zdo_signal_device_update_params_t *params =
             (esp_zb_zdo_signal_device_update_params_t *)esp_zb_app_signal_get_params(p_sg_p);
+        if (!params) {
+            ESP_LOGW(TAG, "Device update: null params");
+            break;
+        }
         ESP_LOGI(TAG, "Device update (MAC join in progress) — short=0x%04X status=%d",
                  params->short_addr, params->status);
         break;
     }
 
     case ESP_ZB_ZDO_SIGNAL_DEVICE_AUTHORIZED: {
+        if (err_status != ESP_OK) {
+            ESP_LOGW(TAG, "Device authorized status error: %s", esp_err_to_name(err_status));
+            break;
+        }
         esp_zb_zdo_signal_device_authorized_params_t *params =
             (esp_zb_zdo_signal_device_authorized_params_t *)esp_zb_app_signal_get_params(p_sg_p);
+        if (!params) {
+            ESP_LOGW(TAG, "Device authorized: null params");
+            break;
+        }
         ESP_LOGI(TAG, "Device authorized (Trust Center authenticated) — short=0x%04X auth_status=%d",
                  params->short_addr, params->authorization_status);
         break;
@@ -400,7 +418,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         break;
 
     default:
-        ESP_LOGD(TAG, "Signal %d status=%s", sig_type, esp_err_to_name(err_status));
+        ESP_LOGI(TAG, "Zigbee Signal 0x%02X (%d) status=%s", sig_type, sig_type, esp_err_to_name(err_status));
         break;
     }
 }
@@ -437,6 +455,7 @@ static void zigbee_task(void *arg)
     // Fix Zigbee coordinator to Channel 20 (2450 MHz)
     // Full +20 dBm TX power, universal Tuya compatibility, 26 MHz RF isolation from Wi-Fi Ch 1 (2412 MHz)
     esp_zb_set_primary_network_channel_set(1 << 20);
+    esp_zb_set_tx_power(20);
 
     ESP_ERROR_CHECK(esp_zb_start(false)); // false = don't erase stored network unless channel mismatch
 
@@ -495,8 +514,6 @@ void zigbee_coord_permit_join(switch_id_t slot, uint8_t duration_s)
 
     esp_zb_lock_acquire(portMAX_DELAY);
     if (duration_s > 0) {
-        // Reset BDB internal timer by closing first if already open, then open
-        esp_zb_bdb_close_network();
         esp_err_t bdb_err = esp_zb_bdb_open_network(duration_s);
         ESP_LOGI(TAG, "Permit join open: slot=%s duration=%ds (bdb_open: %s)",
                  slot == SWITCH_TOP ? "TOP" : "BOTTOM", duration_s, esp_err_to_name(bdb_err));
