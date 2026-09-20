@@ -1,17 +1,12 @@
-// CylinderIQ Hub V2 — main_c6.cpp (ESP32-C6 Network Processor)
+// CylinderIQ Hub V2 — main_c6.cpp (ESP32-C6 Dedicated Zigbee Coordinator)
 //
 // Boot sequence:
-//   1. UART1 proxy init (to S3)
-//   2. WiFi AP start (blocks until AP ready)
-//   3. Zigbee coordinator init (Wi-Fi + 802.15.4 coex enabled here)
-//   4. HTTP server start
-//   5. Start uart_proxy_rx_task
+//   1. UART1 bridge init (to S3)
+//   2. Start uart_proxy_rx_task
+//   3. Zigbee coordinator init (100% dedicated 802.15.4 radio, no Wi-Fi)
 
-#include "http_server.h"
 #include "uart_proxy.h"
-#include "wifi_ap.h"
 #include "zigbee_coord.h"
-#include "esp_coexist.h"
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -27,10 +22,9 @@ extern "C" esp_err_t __wrap_temperature_sensor_install(const void *config, void 
 
 extern "C" void app_main(void)
 {
-    ESP_LOGI(TAG, "CylinderIQ Hub V2 — C6 booting");
+    ESP_LOGI(TAG, "CylinderIQ Hub V2 — C6 Dedicated Zigbee Coordinator booting");
 
-    // ── 1. Coexistence & UART proxy ─────────────────────────
-    esp_coex_wifi_i154_enable();
+    // ── 1. UART bridge to S3 ─────────────────────────────────
     uart_proxy_init();
 
     xTaskCreatePinnedToCore(
@@ -38,18 +32,9 @@ extern "C" void app_main(void)
         4096, NULL, 6,
         NULL, 0);
 
-    // ── 2. WiFi AP ────────────────────────────────────────────
-    wifi_ap_init();
-
-    // ── 3. HTTP server ────────────────────────────────────────
-    http_server_start();
-
-    // ── 4. Zigbee coordinator ─────────────────────────────────
-    // Short delay to ensure Wi-Fi AP beacons are established
-    vTaskDelay(pdMS_TO_TICKS(5000));
+    // ── 2. Zigbee coordinator ────────────────────────────────
     zigbee_coord_init();
 
-    ESP_LOGI(TAG, "C6 ready — http://192.168.4.1  Zigbee coordinator active");
+    ESP_LOGI(TAG, "C6 ready — Dedicated Zigbee 3.0 Coordinator active");
     // app_main returns; scheduler takes over
 }
-

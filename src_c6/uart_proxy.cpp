@@ -1,14 +1,12 @@
 // CylinderIQ Hub V2 — uart_proxy.cpp (ESP32-C6)
-// Serialises HTTP requests to S3 over UART1.
-// One request in-flight at a time (mutex-based serialisation).
-// The S3 push messages ({"type":"push",...}) are consumed and discarded
-// here — the C6 does not cache them; DisplayIQ always polls via HTTP.
+// Listens for switch control requests from S3, dispatches to switch_control,
+// and returns responses over UART1.
 
 #include "uart_proxy.h"
+#include "switch_control.h"
 
 #include <string.h>
 #include <stdlib.h>
-#include <atomic>
 #include "cJSON.h"
 #include "driver/uart.h"
 #include "esp_log.h"
@@ -16,34 +14,15 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-static const char *TAG = "uart_proxy";
+static const char *TAG = "uart_c6";
 
-// Request serialisation: one outstanding request at a time
-static SemaphoreHandle_t s_req_mutex;
-
-// Response delivery: rx_task signals this semaphore when a response arrives
-static SemaphoreHandle_t s_resp_ready;
-
-// Shared between rx_task (writer) and uart_proxy_request (reader)
-// Protected by s_req_mutex (only one caller can be waiting at a time)
-static int    s_resp_status;
-static char  *s_resp_body;   // heap-allocated; caller of uart_proxy_request takes ownership
-
-// Monotonic request ID counter (wraps at 0xFFFF per handoff spec)
-static std::atomic<uint32_t> s_next_id{1};
-
+static SemaphoreHandle_t s_tx_mutex = NULL;
 #define LINE_BUF_SIZE 4096
-
-// ──────────────────────────────────────────────────────────────
-// Init
-// ──────────────────────────────────────────────────────────────
 
 void uart_proxy_init(void)
 {
-    s_req_mutex  = xSemaphoreCreateMutex();
-    s_resp_ready = xSemaphoreCreateBinary();
-    configASSERT(s_req_mutex);
-    configASSERT(s_resp_ready);
+    s_tx_mutex = xSemaphoreCreateMutex();
+    configASSERT(s_tx_mutex);
 
     uart_config_t cfg = {
         .baud_rate           = UART_PROXY_BAUD,
@@ -66,9 +45,14 @@ void uart_proxy_init(void)
     ESP_LOGI(TAG, "UART1 TX=%d RX=%d @ %d baud", UART_PROXY_TX_PIN, UART_PROXY_RX_PIN, UART_PROXY_BAUD);
 }
 
-// ──────────────────────────────────────────────────────────────
-// RX task — reads response/push lines from S3
-// ──────────────────────────────────────────────────────────────
+void uart_proxy_send(const char *json_str)
+{
+    if (!s_tx_mutex || !json_str) return;
+    xSemaphoreTake(s_tx_mutex, portMAX_DELAY);
+    uart_write_bytes(UART_PROXY_PORT, json_str, strlen(json_str));
+    uart_write_bytes(UART_PROXY_PORT, "\n", 1);
+    xSemaphoreGive(s_tx_mutex);
+}
 
 void uart_proxy_rx_task(void *arg)
 {
@@ -86,10 +70,10 @@ void uart_proxy_rx_task(void *arg)
     for (;;) {
         int n = uart_read_bytes(UART_PROXY_PORT, &ch, 1, pdMS_TO_TICKS(100));
 
-        // Heartbeat every 10 s so we know if C6 is hearing S3
+        // Heartbeat every 10s
         uint32_t now = xTaskGetTickCount();
         if ((now - last_hb_tick) >= pdMS_TO_TICKS(10000)) {
-            ESP_LOGI(TAG, "RX heartbeat — bytes received from S3 in last 10 s: %lu",
+            ESP_LOGD(TAG, "RX heartbeat — bytes received from S3 in last 10 s: %lu",
                      (unsigned long)total_bytes);
             total_bytes  = 0;
             last_hb_tick = now;
@@ -115,27 +99,41 @@ void uart_proxy_rx_task(void *arg)
                 continue;
             }
 
-            if (strcmp(jtype->valuestring, "res") == 0) {
-                // Response to a pending request
-                cJSON *jstatus = cJSON_GetObjectItem(msg, "status");
+            if (strcmp(jtype->valuestring, "req") == 0) {
+                // Request from S3!
+                cJSON *jid     = cJSON_GetObjectItem(msg, "id");
+                cJSON *jmethod = cJSON_GetObjectItem(msg, "method");
+                cJSON *jpath   = cJSON_GetObjectItem(msg, "path");
                 cJSON *jbody   = cJSON_GetObjectItem(msg, "body");
 
-                int   status = jstatus ? (int)jstatus->valuedouble : 500;
-                char *body   = (jbody && cJSON_IsString(jbody))
-                               ? strdup(jbody->valuestring)
-                               : strdup("{}");
+                uint32_t req_id = jid ? (uint32_t)jid->valuedouble : 0;
+                const char *method = (jmethod && cJSON_IsString(jmethod)) ? jmethod->valuestring : "GET";
+                const char *path   = (jpath && cJSON_IsString(jpath)) ? jpath->valuestring : "/";
+                const char *body   = (jbody && cJSON_IsString(jbody)) ? jbody->valuestring : "";
 
-                // Deliver to waiting uart_proxy_request() caller
-                // s_req_mutex is held by that caller so this is safe
-                s_resp_status = status;
-                if (s_resp_body) free(s_resp_body);
-                s_resp_body = body;
-                xSemaphoreGive(s_resp_ready);
+                ESP_LOGI(TAG, "REQ id=%lu %s %s", (unsigned long)req_id, method, path);
 
-                ESP_LOGI(TAG, "RES status=%d body=%.60s", status, body);
+                int resp_status = 500;
+                char *resp_body = NULL;
+                switch_control_dispatch(method, path, body, &resp_status, &resp_body);
+
+                // Send response to S3: {"type":"res","id":N,"status":S,"body":"..."}
+                cJSON *res = cJSON_CreateObject();
+                cJSON_AddStringToObject(res, "type", "res");
+                cJSON_AddNumberToObject(res, "id", (double)req_id);
+                cJSON_AddNumberToObject(res, "status", resp_status);
+                cJSON_AddStringToObject(res, "body", resp_body ? resp_body : "{}");
+                char *res_str = cJSON_PrintUnformatted(res);
+                cJSON_Delete(res);
+                if (resp_body) free(resp_body);
+
+                if (res_str) {
+                    uart_proxy_send(res_str);
+                    free(res_str);
+                }
 
             } else if (strcmp(jtype->valuestring, "push") == 0) {
-                ESP_LOGI(TAG, "UART Push received from S3 — bridge link active!");
+                ESP_LOGD(TAG, "Sensor push from S3 received");
             }
 
             cJSON_Delete(msg);
@@ -150,69 +148,4 @@ void uart_proxy_rx_task(void *arg)
         }
     }
     free(line);
-}
-
-// ──────────────────────────────────────────────────────────────
-// uart_proxy_request — called by HTTP handlers
-// ──────────────────────────────────────────────────────────────
-
-bool uart_proxy_request(const char *method,
-                        const char *path,
-                        const char *body,
-                        int        *out_status,
-                        char      **out_body)
-{
-    // Serialise: only one HTTP request in-flight to S3 at a time
-    if (xSemaphoreTake(s_req_mutex, pdMS_TO_TICKS(UART_PROXY_TIMEOUT_MS)) != pdTRUE) {
-        ESP_LOGE(TAG, "Request mutex timeout — S3 busy");
-        *out_status = 503;
-        *out_body   = strdup("{\"error\":\"S3 busy\"}");
-        return false;
-    }
-
-    uint32_t req_id = s_next_id.fetch_add(1) & 0xFFFF;
-
-    // Build request JSON
-    cJSON *req = cJSON_CreateObject();
-    cJSON_AddStringToObject(req, "type",   "req");
-    cJSON_AddNumberToObject(req, "id",     (double)req_id);
-    cJSON_AddStringToObject(req, "method", method);
-    cJSON_AddStringToObject(req, "path",   path);
-    cJSON_AddStringToObject(req, "body",   body ? body : "");
-    char *req_str = cJSON_PrintUnformatted(req);
-    cJSON_Delete(req);
-
-    if (!req_str) {
-        xSemaphoreGive(s_req_mutex);
-        *out_status = 500;
-        *out_body   = strdup("{\"error\":\"OOM\"}");
-        return false;
-    }
-
-    ESP_LOGD(TAG, "REQ id=%lu %s %s", (unsigned long)req_id, method, path);
-
-    // Clear any stale response semaphore from a previous aborted request
-    xSemaphoreTake(s_resp_ready, 0);
-    s_resp_body = NULL;
-
-    // Send over UART
-    uart_write_bytes(UART_PROXY_PORT, req_str, strlen(req_str));
-    uart_write_bytes(UART_PROXY_PORT, "\n", 1);
-    free(req_str);
-
-    // Wait for response
-    bool got_resp = (xSemaphoreTake(s_resp_ready, pdMS_TO_TICKS(UART_PROXY_TIMEOUT_MS)) == pdTRUE);
-
-    if (got_resp) {
-        *out_status = s_resp_status;
-        *out_body   = s_resp_body;   // transfer ownership to caller
-        s_resp_body = NULL;
-    } else {
-        ESP_LOGE(TAG, "S3 response timeout for %s %s", method, path);
-        *out_status = 504;
-        *out_body   = strdup("{\"error\":\"S3 timeout\"}");
-    }
-
-    xSemaphoreGive(s_req_mutex);
-    return got_resp;
 }
