@@ -11,6 +11,7 @@
 #include "uart_proxy.h"
 #include "wifi_ap.h"
 #include "zigbee_coord.h"
+#include "esp_coexist.h"
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -28,7 +29,8 @@ extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "CylinderIQ Hub V2 — C6 booting");
 
-    // ── 1. UART proxy (before WiFi — S3 may boot faster) ─────
+    // ── 1. Coexistence & UART proxy ─────────────────────────
+    esp_coex_wifi_i154_enable();
     uart_proxy_init();
 
     xTaskCreatePinnedToCore(
@@ -39,13 +41,13 @@ extern "C" void app_main(void)
     // ── 2. WiFi AP ────────────────────────────────────────────
     wifi_ap_init();
 
-    // ── 3. Zigbee coordinator ─────────────────────────────────
-    // Must be after wifi_ap_init() so coex manager is ready.
-    // Starts its own FreeRTOS task internally.
-    zigbee_coord_init();
-
-    // ── 4. HTTP server ────────────────────────────────────────
+    // ── 3. HTTP server ────────────────────────────────────────
     http_server_start();
+
+    // ── 4. Zigbee coordinator ─────────────────────────────────
+    // Short delay to ensure Wi-Fi AP beacons are established
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    zigbee_coord_init();
 
     ESP_LOGI(TAG, "C6 ready — http://192.168.4.1  Zigbee coordinator active");
     // app_main returns; scheduler takes over
