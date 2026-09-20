@@ -242,7 +242,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
             (esp_zb_zdo_signal_device_update_params_t *)esp_zb_app_signal_get_params(p_sg_p);
         ESP_LOGI(TAG, "Device update — short=0x%04X status=%d", params->short_addr, params->status);
         if (params->status == 0 || params->status == 1) {
-            handle_device_joined(params->short_addr, params->device_addr);
+            handle_device_joined(params->short_addr, params->long_addr);
         }
         break;
     }
@@ -250,9 +250,9 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     case ESP_ZB_ZDO_SIGNAL_DEVICE_AUTHORIZED: {
         esp_zb_zdo_signal_device_authorized_params_t *params =
             (esp_zb_zdo_signal_device_authorized_params_t *)esp_zb_app_signal_get_params(p_sg_p);
-        ESP_LOGI(TAG, "Device authorized — short=0x%04X status=%d", params->short_addr, params->status);
-        if (params->status == 0) {
-            handle_device_joined(params->short_addr, params->device_addr);
+        ESP_LOGI(TAG, "Device authorized — short=0x%04X auth_status=%d", params->short_addr, params->authorization_status);
+        if (params->authorization_status == 0) {
+            handle_device_joined(params->short_addr, params->long_addr);
         }
         break;
     }

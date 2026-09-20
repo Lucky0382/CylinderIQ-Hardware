@@ -12,8 +12,6 @@ CONFIG_ESP_WIFI_ENABLED=n
 
 # Console on C6 (UART0 is connected to on-board CH343 USB chip)
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
-CONFIG_ESP_CONSOLE_UART_NUM=0
-CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
 
 # ── Zigbee coordinator ────────────────────────────────────────
 # Enable IEEE 802.15.4 radio (100% dedicated RF spectrum, no Wi-Fi coexistence)
