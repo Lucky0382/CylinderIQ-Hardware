@@ -448,6 +448,16 @@ static void zigbee_task(void *arg)
     };
     esp_zb_init(&zb_cfg);
 
+    // v2.x SDK removed the implicit default global link key that earlier versions set --
+    // it must now be configured explicitly, or the Trust Center has nothing to use when
+    // deriving/transporting a key for a newly joining device, which crashes
+    // (Guru Meditation Load access fault) inside aps_secur_key_pair_get_key on first real join.
+    static const uint8_t s_tc_link_key[16] = {
+        0x5A, 0x69, 0x67, 0x42, 0x65, 0x65, 0x41, 0x6C,
+        0x6C, 0x69, 0x61, 0x6E, 0x63, 0x65, 0x30, 0x39
+    }; // "ZigBeeAlliance09"
+    esp_zb_secur_TC_standard_preconfigure_key_set(s_tc_link_key);
+
     // Disable TCLK exchange requirement for commercial Tuya / MOES devices
     // Allows devices to authenticate using standard preconfigured global link key (ZigBeeAlliance09)
     esp_zb_secur_link_key_exchange_required_set(false);
