@@ -28,23 +28,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.platformio
-          key: ${{ runner.os }}-platformio-s3-${{ hashFiles('**/platformio.ini') }}
+          key: ${{ runner.os }}-pio-s3-${{ hashFiles('**/platformio.ini') }}
           restore-keys: |
-            ${{ runner.os }}-platformio-s3-
-            ${{ runner.os }}-platformio-
+            ${{ runner.os }}-pio-s3-
+            ${{ runner.os }}-pio-
 
       - name: Build S3 Firmware
         run: pio run -e s3
 
       - name: Create Merged Binary
         run: |
-          python -m esptool --chip esp32s3 merge-bin \
-            -o s3-firmware-merged.bin \
-            --flash-mode dio \
-            --flash-size 16MB \
-            0x0000 .pio/build/s3/bootloader.bin \
-            0x8000 .pio/build/s3/partitions.bin \
-            0x10000 .pio/build/s3/firmware.bin || \
           python -m esptool --chip esp32s3 merge_bin \
             -o s3-firmware-merged.bin \
             --flash_mode dio \
@@ -53,17 +46,17 @@ jobs:
             0x8000 .pio/build/s3/partitions.bin \
             0x10000 .pio/build/s3/firmware.bin
 
-      - name: Upload Artifacts
+      - name: Upload S3 Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: esp32-s3-firmware
+          name: s3-firmware-${{ github.sha }}
           path: |
             s3-firmware-merged.bin
             .pio/build/s3/bootloader.bin
             .pio/build/s3/partitions.bin
             .pio/build/s3/firmware.bin
             .pio/build/s3/firmware.elf
-          retention-days: 7
+          retention-days: 30
 
   build-c6:
     name: Build ESP32-C6 Firmware
@@ -87,23 +80,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.platformio
-          key: ${{ runner.os }}-platformio-c6-${{ hashFiles('**/platformio.ini') }}
+          key: ${{ runner.os }}-pio-c6-${{ hashFiles('**/platformio.ini') }}
           restore-keys: |
-            ${{ runner.os }}-platformio-c6-
-            ${{ runner.os }}-platformio-
+            ${{ runner.os }}-pio-c6-
+            ${{ runner.os }}-pio-
 
       - name: Build C6 Firmware
         run: pio run -e c6
 
       - name: Create Merged Binary
         run: |
-          python -m esptool --chip esp32c6 merge-bin \
-            -o c6-firmware-merged.bin \
-            --flash-mode dio \
-            --flash-size 4MB \
-            0x0000 .pio/build/c6/bootloader.bin \
-            0x8000 .pio/build/c6/partitions.bin \
-            0x10000 .pio/build/c6/firmware.bin || \
           python -m esptool --chip esp32c6 merge_bin \
             -o c6-firmware-merged.bin \
             --flash_mode dio \
@@ -112,14 +98,14 @@ jobs:
             0x8000 .pio/build/c6/partitions.bin \
             0x10000 .pio/build/c6/firmware.bin
 
-      - name: Upload Artifacts
+      - name: Upload C6 Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: esp32-c6-firmware
+          name: c6-firmware-${{ github.sha }}
           path: |
             c6-firmware-merged.bin
             .pio/build/c6/bootloader.bin
             .pio/build/c6/partitions.bin
             .pio/build/c6/firmware.bin
             .pio/build/c6/firmware.elf
-          retention-days: 7
+          retention-days: 30
