@@ -9,6 +9,9 @@
 #include "zigbee_coord.h"
 #include "nvs_flash.h"
 
+#include <cstdio>
+#include <cstring>
+
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
