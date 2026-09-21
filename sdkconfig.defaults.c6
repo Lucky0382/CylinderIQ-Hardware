@@ -28,3 +28,10 @@ CONFIG_ZB_ZCL_SUPPORT_CLUSTER_ON_OFF=y
 # Zigbee task stack — increase for coordinator role & NVS serialization
 CONFIG_ZB_STACK_TASK_STACK_SIZE=8192
 CONFIG_ZB_MAIN_TASK_STACK_SIZE=8192
+
+# ── Brownout detector ──────────────────────────────────────────
+# Default level (SEL_7, ~2.79V) trips on brief voltage sag caused by
+# 802.15.4 TX current spikes (esp. during permit-join broadcasts) on
+# marginal USB power, causing a reset loop that repeatedly re-enumerates
+# the onboard USB-UART chip. Lower sensitivity to stop false resets.
+CONFIG_ESP_BROWNOUT_DET_LVL_SEL_3=y
