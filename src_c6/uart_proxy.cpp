@@ -64,17 +64,30 @@ void uart_proxy_rx_task(void *arg)
     int line_pos = 0;
     uint8_t ch;
 
-    uint32_t total_bytes  = 0;
-    uint32_t last_hb_tick = xTaskGetTickCount();
+    uint32_t total_bytes      = 0;
+    uint32_t current_baud     = UART_PROXY_BAUD;
+    uint32_t silent_intervals = 0;
+    uint32_t last_hb_tick     = xTaskGetTickCount();
 
     for (;;) {
         int n = uart_read_bytes(UART_PROXY_PORT, &ch, 1, pdMS_TO_TICKS(100));
 
-        // Heartbeat every 10s
+        // Heartbeat every 10s with auto-baud watchdog
         uint32_t now = xTaskGetTickCount();
         if ((now - last_hb_tick) >= pdMS_TO_TICKS(10000)) {
-            ESP_LOGD(TAG, "RX heartbeat — bytes received from S3 in last 10 s: %lu",
-                     (unsigned long)total_bytes);
+            ESP_LOGD(TAG, "RX heartbeat — bytes received from S3 in last 10 s: %lu (baud %lu)",
+                     (unsigned long)total_bytes, (unsigned long)current_baud);
+            if (total_bytes == 0) {
+                silent_intervals++;
+                if (silent_intervals >= 2) {
+                    current_baud = (current_baud == 921600) ? 115200 : 921600;
+                    uart_set_baudrate(UART_PROXY_PORT, current_baud);
+                    ESP_LOGI(TAG, "No data from S3 for 20s — toggling UART1 baud to %lu", (unsigned long)current_baud);
+                    silent_intervals = 0;
+                }
+            } else {
+                silent_intervals = 0;
+            }
             total_bytes  = 0;
             last_hb_tick = now;
         }

@@ -34,6 +34,7 @@
 
 // Set storage partition name for esp-zigbee dataset persistence
 extern "C" void esp_zigbee_set_storage_name(const char *name);
+extern "C" void ezb_secur_tcpol_set_allow_rejoins_with_well_known_key(bool allow);
 
 static const char *TAG = "zb_coord";
 
@@ -450,6 +451,7 @@ static void zigbee_task(void *arg)
     // Disable TCLK exchange requirement for commercial Tuya / MOES devices
     // Allows devices to authenticate using standard preconfigured global link key (ZigBeeAlliance09)
     esp_zb_secur_link_key_exchange_required_set(false);
+    ezb_secur_tcpol_set_allow_rejoins_with_well_known_key(true);
 
     // Create standard HA On/Off switch endpoint
     // Registers Basic (Server), Identify (Server & Client), and On/Off (Client) clusters

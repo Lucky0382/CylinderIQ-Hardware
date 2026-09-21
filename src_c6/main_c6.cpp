@@ -21,6 +21,51 @@ extern "C" esp_err_t __wrap_temperature_sensor_install(const void *config, void 
     return ESP_OK;
 }
 
+static void console_rx_task(void *arg)
+{
+    (void)arg;
+    char line[64];
+    while (1) {
+        if (fgets(line, sizeof(line), stdin)) {
+            char *p = strpbrk(line, "\r\n");
+            if (p) *p = '\0';
+            if (strlen(line) == 0) continue;
+
+            if (strcmp(line, "pair") == 0 || strcmp(line, "p") == 0) {
+                ESP_LOGI(TAG, "Console CMD: Opening pairing window for 180s (TOP slot)");
+                zigbee_coord_permit_join(SWITCH_TOP, 180);
+            } else if (strcmp(line, "status") == 0 || strcmp(line, "s") == 0) {
+                zb_switch_t top = zigbee_coord_switch_get(SWITCH_TOP);
+                zb_switch_t bot = zigbee_coord_switch_get(SWITCH_BOTTOM);
+                zb_pair_state_t ps = zigbee_coord_pair_state();
+                uint16_t pan = 0; uint8_t ch = 0; bool online = false;
+                zigbee_coord_get_network_info(&pan, &ch, &online);
+                ESP_LOGI(TAG, "=== COORDINATOR STATUS ===");
+                ESP_LOGI(TAG, "Network:       channel=%d PAN=0x%04X online=%s", ch, pan, online ? "YES" : "NO");
+                ESP_LOGI(TAG, "TOP switch:    paired=%d short=0x%04X state=%s ep=%d",
+                         top.paired, top.short_addr, top.on ? "ON" : "OFF", top.endpoint);
+                ESP_LOGI(TAG, "BOTTOM switch: paired=%d short=0x%04X state=%s ep=%d",
+                         bot.paired, bot.short_addr, bot.on ? "ON" : "OFF", bot.endpoint);
+                ESP_LOGI(TAG, "Pairing window: open=%d target=%s remaining=%ds",
+                         ps.open, ps.target == SWITCH_TOP ? "TOP" : "BOTTOM", ps.remaining_s);
+                ESP_LOGI(TAG, "==========================");
+            } else if (strcmp(line, "reset") == 0 || strcmp(line, "r") == 0) {
+                ESP_LOGW(TAG, "Console CMD: Resetting Zigbee network to factory default...");
+                zigbee_coord_reset_network();
+            } else if (strcmp(line, "top_on") == 0 || strcmp(line, "on") == 0) {
+                ESP_LOGI(TAG, "Console CMD: Turn TOP switch ON");
+                zigbee_coord_switch_set(SWITCH_TOP, true);
+            } else if (strcmp(line, "top_off") == 0 || strcmp(line, "off") == 0) {
+                ESP_LOGI(TAG, "Console CMD: Turn TOP switch OFF");
+                zigbee_coord_switch_set(SWITCH_TOP, false);
+            } else {
+                ESP_LOGI(TAG, "Available console commands: pair, status, reset, on, off");
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
 extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "CylinderIQ Hub V2 — C6 Dedicated Zigbee Coordinator booting");
@@ -57,6 +102,10 @@ extern "C" void app_main(void)
     // ── 2. Zigbee coordinator ────────────────────────────────
     zigbee_coord_init();
 
+    // ── 3. Console interactive command task ──────────────────
+    xTaskCreate(console_rx_task, "console_cmd", 3072, NULL, 3, NULL);
+
     ESP_LOGI(TAG, "C6 ready — Dedicated Zigbee 3.0 Coordinator active");
     // app_main returns; scheduler takes over
 }
+

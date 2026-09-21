@@ -22,7 +22,7 @@ extern "C" {
 #define UART_PROXY_PORT        UART_NUM_1
 #define UART_PROXY_TX_PIN      4       // C6 GPIO4 → S3 GPIO18(RX)
 #define UART_PROXY_RX_PIN      5       // C6 GPIO5 ← S3 GPIO17(TX)
-#define UART_PROXY_BAUD        115200  // Match S3 at robust 115200 baud
+#define UART_PROXY_BAUD        921600  // Match active S3 firmware (auto-falls back if silent)
 #define UART_PROXY_BUF         8192    // RX ring buffer size
 
 void uart_proxy_init(void);
