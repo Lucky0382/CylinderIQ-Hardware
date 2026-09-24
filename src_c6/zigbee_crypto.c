@@ -44,13 +44,13 @@ ezb_err_t ezb_plat_crypto_aes_init(ezb_crypto_context_t *context)
     if (!context || !context->ctx) {
         return EZB_ERR_INV_ARG;
     }
-    if (context->ctx_size < sizeof(mbedtls_aes_context)) {
-        ESP_LOGE(TAG, "aes_init: ctx_size %d < sizeof(mbedtls_aes_context) %d",
-                 (int)context->ctx_size, (int)sizeof(mbedtls_aes_context));
+    if (context->ctx_size < sizeof(mbedtls_svc_key_id_t)) {
+        ESP_LOGE(TAG, "aes_init: ctx_size %d too small (need %d)",
+                 (int)context->ctx_size, (int)sizeof(mbedtls_svc_key_id_t));
         return EZB_ERR_FAIL;
     }
-    mbedtls_aes_context *aes = (mbedtls_aes_context *)context->ctx;
-    mbedtls_aes_init(aes);
+    *(mbedtls_svc_key_id_t *)context->ctx = 0;
+    ESP_LOGD(TAG, "aes_init OK (ctx_size=%d)", (int)context->ctx_size);
     return EZB_ERR_NONE;
 }
 
@@ -59,16 +59,28 @@ ezb_err_t ezb_plat_crypto_aes_setkey_enc(ezb_crypto_context_t *context, const ez
     if (!context || !context->ctx || !key || !key->key) {
         return EZB_ERR_INV_ARG;
     }
-    if (context->ctx_size < sizeof(mbedtls_aes_context)) {
+    if (context->ctx_size < sizeof(mbedtls_svc_key_id_t)) {
         return EZB_ERR_FAIL;
     }
 
-    mbedtls_aes_context *aes = (mbedtls_aes_context *)context->ctx;
-    int ret = mbedtls_aes_setkey_enc(aes, key->key, key->key_len * 8);
-    if (ret != 0) {
-        ESP_LOGE(TAG, "mbedtls_aes_setkey_enc failed: -0x%04X (key_len=%d)", -ret, (int)key->key_len);
+    mbedtls_svc_key_id_t *p_key_id = (mbedtls_svc_key_id_t *)context->ctx;
+    if (*p_key_id != 0) {
+        psa_destroy_key(*p_key_id);
+        *p_key_id = 0;
+    }
+
+    psa_key_attributes_t attributes = psa_key_attributes_init();
+    psa_set_key_type(&attributes, PSA_KEY_TYPE_AES);
+    psa_set_key_bits(&attributes, key->key_len * 8);
+    psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_ENCRYPT);
+    psa_set_key_algorithm(&attributes, PSA_ALG_ECB_NO_PADDING);
+
+    psa_status_t status = psa_import_key(&attributes, key->key, key->key_len, p_key_id);
+    if (status != PSA_SUCCESS) {
+        ESP_LOGE(TAG, "psa_import_key (enc) failed: %ld (key_len=%d)", (long)status, (int)key->key_len);
         return EZB_ERR_FAIL;
     }
+    ESP_LOGI(TAG, "AES enc key imported OK (key_id=%lu, key_len=%d)", (unsigned long)*p_key_id, (int)key->key_len);
     return EZB_ERR_NONE;
 }
 
@@ -77,16 +89,28 @@ ezb_err_t ezb_plat_crypto_aes_setkey_dec(ezb_crypto_context_t *context, const ez
     if (!context || !context->ctx || !key || !key->key) {
         return EZB_ERR_INV_ARG;
     }
-    if (context->ctx_size < sizeof(mbedtls_aes_context)) {
+    if (context->ctx_size < sizeof(mbedtls_svc_key_id_t)) {
         return EZB_ERR_FAIL;
     }
 
-    mbedtls_aes_context *aes = (mbedtls_aes_context *)context->ctx;
-    int ret = mbedtls_aes_setkey_dec(aes, key->key, key->key_len * 8);
-    if (ret != 0) {
-        ESP_LOGE(TAG, "mbedtls_aes_setkey_dec failed: -0x%04X (key_len=%d)", -ret, (int)key->key_len);
+    mbedtls_svc_key_id_t *p_key_id = (mbedtls_svc_key_id_t *)context->ctx;
+    if (*p_key_id != 0) {
+        psa_destroy_key(*p_key_id);
+        *p_key_id = 0;
+    }
+
+    psa_key_attributes_t attributes = psa_key_attributes_init();
+    psa_set_key_type(&attributes, PSA_KEY_TYPE_AES);
+    psa_set_key_bits(&attributes, key->key_len * 8);
+    psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_DECRYPT);
+    psa_set_key_algorithm(&attributes, PSA_ALG_ECB_NO_PADDING);
+
+    psa_status_t status = psa_import_key(&attributes, key->key, key->key_len, p_key_id);
+    if (status != PSA_SUCCESS) {
+        ESP_LOGE(TAG, "psa_import_key (dec) failed: %ld (key_len=%d)", (long)status, (int)key->key_len);
         return EZB_ERR_FAIL;
     }
+    ESP_LOGI(TAG, "AES dec key imported OK (key_id=%lu, key_len=%d)", (unsigned long)*p_key_id, (int)key->key_len);
     return EZB_ERR_NONE;
 }
 
@@ -95,16 +119,38 @@ ezb_err_t ezb_plat_crypto_aes_encrypt(ezb_crypto_context_t *context, const uint8
     if (!context || !context->ctx || !input || !output) {
         return EZB_ERR_INV_ARG;
     }
-    if (context->ctx_size < sizeof(mbedtls_aes_context)) {
+    if (context->ctx_size < sizeof(mbedtls_svc_key_id_t)) {
         return EZB_ERR_FAIL;
     }
 
-    mbedtls_aes_context *aes = (mbedtls_aes_context *)context->ctx;
-    int ret = mbedtls_aes_crypt_ecb(aes, MBEDTLS_AES_ENCRYPT, input, output);
-    if (ret != 0) {
-        ESP_LOGE(TAG, "mbedtls_aes_crypt_ecb (enc) failed: -0x%04X", -ret);
+    mbedtls_svc_key_id_t key_id = *(mbedtls_svc_key_id_t *)context->ctx;
+
+    // Use multi-part cipher API to avoid any single-part buffer layout issues
+    psa_cipher_operation_t op = psa_cipher_operation_init();
+    psa_status_t status = psa_cipher_encrypt_setup(&op, key_id, PSA_ALG_ECB_NO_PADDING);
+    if (status != PSA_SUCCESS) {
+        ESP_LOGE(TAG, "psa_cipher_encrypt_setup failed: %ld (key_id=%lu)", (long)status, (unsigned long)key_id);
+        psa_cipher_abort(&op);
         return EZB_ERR_FAIL;
     }
+
+    size_t out_len = 0;
+    status = psa_cipher_update(&op, input, 16, output, 16, &out_len);
+    if (status != PSA_SUCCESS) {
+        ESP_LOGE(TAG, "psa_cipher_update (enc) failed: %ld", (long)status);
+        psa_cipher_abort(&op);
+        return EZB_ERR_FAIL;
+    }
+
+    size_t finish_len = 0;
+    status = psa_cipher_finish(&op, output + out_len, 16 - out_len, &finish_len);
+    if (status != PSA_SUCCESS) {
+        ESP_LOGE(TAG, "psa_cipher_finish (enc) failed: %ld", (long)status);
+        psa_cipher_abort(&op);
+        return EZB_ERR_FAIL;
+    }
+
+    ESP_LOGD(TAG, "AES encrypt OK (key_id=%lu, out_len=%d+%d)", (unsigned long)key_id, (int)out_len, (int)finish_len);
     return EZB_ERR_NONE;
 }
 
@@ -113,16 +159,38 @@ ezb_err_t ezb_plat_crypto_aes_decrypt(ezb_crypto_context_t *context, const uint8
     if (!context || !context->ctx || !input || !output) {
         return EZB_ERR_INV_ARG;
     }
-    if (context->ctx_size < sizeof(mbedtls_aes_context)) {
+    if (context->ctx_size < sizeof(mbedtls_svc_key_id_t)) {
         return EZB_ERR_FAIL;
     }
 
-    mbedtls_aes_context *aes = (mbedtls_aes_context *)context->ctx;
-    int ret = mbedtls_aes_crypt_ecb(aes, MBEDTLS_AES_DECRYPT, input, output);
-    if (ret != 0) {
-        ESP_LOGE(TAG, "mbedtls_aes_crypt_ecb (dec) failed: -0x%04X", -ret);
+    mbedtls_svc_key_id_t key_id = *(mbedtls_svc_key_id_t *)context->ctx;
+
+    // Use multi-part cipher API
+    psa_cipher_operation_t op = psa_cipher_operation_init();
+    psa_status_t status = psa_cipher_decrypt_setup(&op, key_id, PSA_ALG_ECB_NO_PADDING);
+    if (status != PSA_SUCCESS) {
+        ESP_LOGE(TAG, "psa_cipher_decrypt_setup failed: %ld (key_id=%lu)", (long)status, (unsigned long)key_id);
+        psa_cipher_abort(&op);
         return EZB_ERR_FAIL;
     }
+
+    size_t out_len = 0;
+    status = psa_cipher_update(&op, input, 16, output, 16, &out_len);
+    if (status != PSA_SUCCESS) {
+        ESP_LOGE(TAG, "psa_cipher_update (dec) failed: %ld", (long)status);
+        psa_cipher_abort(&op);
+        return EZB_ERR_FAIL;
+    }
+
+    size_t finish_len = 0;
+    status = psa_cipher_finish(&op, output + out_len, 16 - out_len, &finish_len);
+    if (status != PSA_SUCCESS) {
+        ESP_LOGE(TAG, "psa_cipher_finish (dec) failed: %ld", (long)status);
+        psa_cipher_abort(&op);
+        return EZB_ERR_FAIL;
+    }
+
+    ESP_LOGD(TAG, "AES decrypt OK (key_id=%lu, out_len=%d+%d)", (unsigned long)key_id, (int)out_len, (int)finish_len);
     return EZB_ERR_NONE;
 }
 
@@ -131,12 +199,15 @@ ezb_err_t ezb_plat_crypto_aes_free(ezb_crypto_context_t *context)
     if (!context || !context->ctx) {
         return EZB_ERR_INV_ARG;
     }
-    if (context->ctx_size < sizeof(mbedtls_aes_context)) {
+    if (context->ctx_size < sizeof(mbedtls_svc_key_id_t)) {
         return EZB_ERR_FAIL;
     }
 
-    mbedtls_aes_context *aes = (mbedtls_aes_context *)context->ctx;
-    mbedtls_aes_free(aes);
+    mbedtls_svc_key_id_t *p_key_id = (mbedtls_svc_key_id_t *)context->ctx;
+    if (*p_key_id != 0) {
+        psa_destroy_key(*p_key_id);
+        *p_key_id = 0;
+    }
     return EZB_ERR_NONE;
 }
 
