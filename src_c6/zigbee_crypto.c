@@ -150,7 +150,7 @@ ezb_err_t ezb_plat_crypto_aes_encrypt(ezb_crypto_context_t *context, const uint8
         return EZB_ERR_FAIL;
     }
 
-    ESP_LOGD(TAG, "AES encrypt OK (key_id=%lu, out_len=%d+%d)", (unsigned long)key_id, (int)out_len, (int)finish_len);
+    ESP_LOGI(TAG, "AES encrypt OK (key_id=%lu, out=%d+%d bytes)", (unsigned long)key_id, (int)out_len, (int)finish_len);
     return EZB_ERR_NONE;
 }
 
@@ -190,7 +190,7 @@ ezb_err_t ezb_plat_crypto_aes_decrypt(ezb_crypto_context_t *context, const uint8
         return EZB_ERR_FAIL;
     }
 
-    ESP_LOGD(TAG, "AES decrypt OK (key_id=%lu, out_len=%d+%d)", (unsigned long)key_id, (int)out_len, (int)finish_len);
+    ESP_LOGI(TAG, "AES decrypt OK (key_id=%lu, out=%d+%d bytes)", (unsigned long)key_id, (int)out_len, (int)finish_len);
     return EZB_ERR_NONE;
 }
 
