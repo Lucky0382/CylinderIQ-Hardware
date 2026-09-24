@@ -451,10 +451,8 @@ static void zigbee_task(void *arg)
     esp_zb_init(&zb_cfg);
 
     // ── Security configuration ──────────────────────────────
-    // DIAGNOSTIC: Disable network-level security to test basic association
-    // without Transport Key exchange. If the switch joins with this config,
-    // the issue is in the key exchange, not MAC/NWK association.
-    esp_zb_secur_network_security_enable(false);
+    // Enable network-level security (AES-128 encryption + MIC-32)
+    esp_zb_secur_network_security_enable(true);
 
     // Still set the well-known TC key in case it's needed for TC policy
     static const uint8_t s_tc_link_key[16] = {
