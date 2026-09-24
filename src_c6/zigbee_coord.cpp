@@ -53,7 +53,7 @@ static zb_pair_state_t   s_pair = {false, SWITCH_TOP, 0};
 static TimerHandle_t     s_pair_timer = NULL;
 static bool              s_coord_ready = false;
 static uint16_t          s_pan_id = 0xA276;
-static uint8_t           s_channel = 20;
+static uint8_t           s_channel = 11;
 
 // Coordinator endpoint number
 #define COORD_ENDPOINT  1
@@ -260,14 +260,14 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
             ESP_LOGI(TAG, "Device started up in %s factory-reset mode",
                      esp_zb_bdb_is_factory_new() ? "" : "non");
             if (esp_zb_bdb_is_factory_new()) {
-                ESP_LOGI(TAG, "Forming Zigbee network on Channel 20");
+                ESP_LOGI(TAG, "Forming Zigbee network on Channel 11");
                 esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_FORMATION);
             } else {
                 uint8_t cur_ch = esp_zb_get_current_channel();
                 uint16_t pan   = esp_zb_get_pan_id();
                 ESP_LOGI(TAG, "Coordinator restored from NVS (channel %d  PAN 0x%04X)", cur_ch, pan);
-                if (cur_ch != 20) {
-                    ESP_LOGW(TAG, "Restored channel %d != target Channel 20. Clearing old network to reform on Channel 20...", cur_ch);
+                if (cur_ch != 11) {
+                    ESP_LOGW(TAG, "Restored channel %d != target Channel 11. Clearing old network to reform on Channel 11...", cur_ch);
                     nvs_clear_switch(SWITCH_TOP);
                     nvs_clear_switch(SWITCH_BOTTOM);
                     esp_zb_bdb_reset_via_local_action();
@@ -481,9 +481,10 @@ static void zigbee_task(void *arg)
     esp_zb_ep_list_t *ep_list = esp_zb_on_off_switch_ep_create(COORD_ENDPOINT, &switch_cfg);
     esp_zb_device_register(ep_list);
 
-    // Fix Zigbee coordinator to Channel 20 (2450 MHz)
-    // Full +20 dBm TX power, universal Tuya compatibility, 26 MHz RF isolation from Wi-Fi Ch 1 (2412 MHz)
-    esp_zb_set_primary_network_channel_set(1 << 20);
+    // Fix Zigbee coordinator to Channel 11 (2405 MHz)
+    // Matches HA/Zigbee2MQTT network channel — MOES/Tuya switches prioritize
+    // their last-used channel, so matching Channel 11 ensures instant pairing.
+    esp_zb_set_primary_network_channel_set(1 << 11);
     esp_zb_set_tx_power(20);
 
     ESP_ERROR_CHECK(esp_zb_start(false)); // false = don't erase stored network unless channel mismatch
