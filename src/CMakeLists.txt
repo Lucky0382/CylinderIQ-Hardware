@@ -5,7 +5,7 @@ if("${IDF_TARGET}" STREQUAL "esp32c6")
     FILE(GLOB_RECURSE app_sources ${CMAKE_SOURCE_DIR}/src_c6/*.c ${CMAKE_SOURCE_DIR}/src_c6/*.cpp)
     idf_component_register(SRCS ${app_sources}
         INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/src_c6
-        REQUIRES esp-zigbee-lib ieee802154 json nvs_flash driver)
+        REQUIRES esp-zigbee-lib ieee802154 json nvs_flash driver mbedtls)
     target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--allow-multiple-definition")
     target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=temperature_sensor_install")
 else()

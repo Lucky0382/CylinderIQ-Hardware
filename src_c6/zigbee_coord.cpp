@@ -35,6 +35,7 @@
 // Set storage partition name for esp-zigbee dataset persistence
 extern "C" void esp_zigbee_set_storage_name(const char *name);
 extern "C" void ezb_secur_tcpol_set_allow_rejoins_with_well_known_key(bool allow);
+extern "C" void ezb_plat_crypto_init(void);
 
 static const char *TAG = "zb_coord";
 
@@ -433,6 +434,9 @@ static void zigbee_task(void *arg)
 
     // Explicitly configure Zigbee stack datasets subsystem to use the dedicated 512KB "zigbee" partition
     esp_zigbee_set_storage_name("zigbee");
+
+    // Initialize PSA crypto platform layer early
+    ezb_plat_crypto_init();
 
     // Coordinator config
     esp_zb_cfg_t zb_cfg = {
