@@ -18,6 +18,9 @@ CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_IEEE802154_ENABLED=y
 
 # Zigbee stack — coordinator role
+# NOTE: CONFIG_ZB_SDK_1xx enables v1-compat API shims on the v2.0.4 library.
+# Full v2 migration is planned but not safe under time pressure.
+# The compat macros correctly map to native v2 functions at compile time.
 CONFIG_ZB_ENABLED=y
 CONFIG_ZB_SDK_1xx=y
 CONFIG_ZB_ZCZR=y
@@ -25,9 +28,9 @@ CONFIG_ZB_RADIO_NATIVE=y
 CONFIG_ZB_COORDINATOR_ROLE=y
 CONFIG_ZB_ZCL_SUPPORT_CLUSTER_ON_OFF=y
 
-# Zigbee task stack — increase for coordinator role & NVS serialization
-CONFIG_ZB_STACK_TASK_STACK_SIZE=8192
-CONFIG_ZB_MAIN_TASK_STACK_SIZE=8192
+# Zigbee task stack — increased for v2.x native coordinator role & NVS serialization
+CONFIG_ZB_STACK_TASK_STACK_SIZE=12288
+CONFIG_ZB_MAIN_TASK_STACK_SIZE=12288
 
 # ── Brownout detector ──────────────────────────────────────────
 # Default level (SEL_7, ~2.79V) trips on brief voltage sag caused by

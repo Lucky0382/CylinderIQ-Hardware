@@ -448,21 +448,30 @@ static void zigbee_task(void *arg)
     };
     esp_zb_init(&zb_cfg);
 
-    // v2.x SDK removed the implicit default global link key that earlier versions set --
-    // it must now be configured explicitly, or the Trust Center has nothing to use when
-    // deriving/transporting a key for a newly joining device, which crashes
-    // (Guru Meditation Load access fault) inside aps_secur_key_pair_get_key on first real join.
+    // ── Security configuration ──────────────────────────────
+    // MUST be set up BEFORE device registration and esp_zb_start().
+    //
+    // 1. Enable network-level security (AES-128 encryption + MIC-32).
+    //    Without this, the Trust Center does not populate its internal
+    //    key tables, causing aps_secur_key_pair_get_key to fault on
+    //    first device join (A1 = 0xFFFFFFFF = uninitialised sentinel).
+    esp_zb_secur_network_security_enable(true);
+
+    // 2. Set the ZigBeeAlliance09 global Trust Center link key.
+    //    v2.x SDK removed the implicit default; must be explicit.
     static const uint8_t s_tc_link_key[16] = {
         0x5A, 0x69, 0x67, 0x42, 0x65, 0x65, 0x41, 0x6C,
         0x6C, 0x69, 0x61, 0x6E, 0x63, 0x65, 0x30, 0x39
     }; // "ZigBeeAlliance09"
     esp_zb_secur_TC_standard_preconfigure_key_set(s_tc_link_key);
 
-    // Disable TCLK exchange requirement for commercial Tuya / MOES devices
-    // Allows devices to authenticate using standard preconfigured global link key (ZigBeeAlliance09)
+    // 3. Disable TCLK exchange requirement for commercial Tuya / MOES devices.
+    //    Allows devices to join using the standard preconfigured global link key
+    //    without an additional Transport Key handshake.
     esp_zb_secur_link_key_exchange_required_set(false);
     ezb_secur_tcpol_set_allow_rejoins_with_well_known_key(true);
 
+    // ── Endpoint / cluster registration ─────────────────────
     // Create standard HA On/Off switch endpoint
     // Registers Basic (Server), Identify (Server & Client), and On/Off (Client) clusters
     // so joining devices (MOES switch) find matching clusters and complete commissioning!
