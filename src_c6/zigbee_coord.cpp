@@ -276,7 +276,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
                     s_pan_id      = pan;
                     s_channel     = cur_ch;
                     xSemaphoreGive(s_state_mutex);
-                    esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
+                    ESP_LOGI(TAG, "Coordinator online and ready on Channel %d (PAN 0x%04X)", s_channel, s_pan_id);
                 }
             }
         } else {
@@ -291,9 +291,8 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
             s_pan_id      = esp_zb_get_pan_id();
             s_channel     = esp_zb_get_current_channel();
             xSemaphoreGive(s_state_mutex);
-            ESP_LOGI(TAG, "Network formed successfully — channel %d  PAN 0x%04X",
+            ESP_LOGI(TAG, "Network formed successfully — channel %d  PAN 0x%04X. Ready for pairing.",
                      s_channel, s_pan_id);
-            esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
         } else {
             ESP_LOGE(TAG, "Network formation failed: %s — retrying in 1s",
                      esp_err_to_name(err_status));
@@ -546,10 +545,23 @@ void zigbee_coord_permit_join(switch_id_t slot, uint8_t duration_s)
         esp_err_t bdb_err = esp_zb_bdb_open_network(duration_s);
         ESP_LOGI(TAG, "Permit join open: slot=%s duration=%ds (bdb_open: %s)",
                  slot == SWITCH_TOP ? "TOP" : "BOTTOM", duration_s, esp_err_to_name(bdb_err));
+
+        // Standard Zigbee 3.0 / Tuya Trust Center permit-joining broadcast to all routers and coordinator (0xFFFC)
+        esp_zb_zdo_permit_joining_req_param_t req_param = {};
+        req_param.dst_nwk_addr    = 0xFFFC;
+        req_param.permit_duration = duration_s;
+        req_param.tc_significance = 1; // Explicitly open Trust Center authentication policy
+        esp_zb_zdo_permit_joining_req(&req_param, NULL, NULL);
     } else {
         esp_err_t bdb_err = esp_zb_bdb_close_network();
         ESP_LOGI(TAG, "Permit join closed: slot=%s (bdb_close: %s)",
                  slot == SWITCH_TOP ? "TOP" : "BOTTOM", esp_err_to_name(bdb_err));
+
+        esp_zb_zdo_permit_joining_req_param_t req_param = {};
+        req_param.dst_nwk_addr    = 0xFFFC;
+        req_param.permit_duration = 0;
+        req_param.tc_significance = 1;
+        esp_zb_zdo_permit_joining_req(&req_param, NULL, NULL);
     }
     esp_zb_lock_release();
 }
