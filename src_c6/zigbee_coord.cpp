@@ -321,23 +321,22 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
             uint8_t dur = *p_dur;
             xSemaphoreTake(s_state_mutex, portMAX_DELAY);
             if (dur > 0) {
-                if (!s_sw[SWITCH_TOP].paired) {
+                if (!s_pair.open || s_pair.remaining_s == 0) {
                     s_pair.open        = true;
-                    s_pair.target      = SWITCH_TOP;
                     s_pair.remaining_s = dur;
+                    if (!s_sw[SWITCH_TOP].paired) {
+                        s_pair.target = SWITCH_TOP;
+                        ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds — READY TO PAIR TOP SWITCH",
+                                 s_pan_id, dur);
+                    } else if (!s_sw[SWITCH_BOTTOM].paired) {
+                        s_pair.target = SWITCH_BOTTOM;
+                        ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds — READY TO PAIR BOTTOM SWITCH",
+                                 s_pan_id, dur);
+                    } else {
+                        ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds (both switches paired)",
+                                 s_pan_id, dur);
+                    }
                     if (s_pair_timer) xTimerReset(s_pair_timer, 0);
-                    ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds — READY TO PAIR TOP SWITCH",
-                             s_pan_id, dur);
-                } else if (!s_sw[SWITCH_BOTTOM].paired) {
-                    s_pair.open        = true;
-                    s_pair.target      = SWITCH_BOTTOM;
-                    s_pair.remaining_s = dur;
-                    if (s_pair_timer) xTimerReset(s_pair_timer, 0);
-                    ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds — READY TO PAIR BOTTOM SWITCH",
-                             s_pan_id, dur);
-                } else {
-                    ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds (both switches paired)",
-                             s_pan_id, dur);
                 }
             } else {
                 s_pair.open        = false;
