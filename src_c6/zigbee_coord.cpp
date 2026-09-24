@@ -451,25 +451,18 @@ static void zigbee_task(void *arg)
     esp_zb_init(&zb_cfg);
 
     // ── Security configuration ──────────────────────────────
-    // MUST be set up BEFORE device registration and esp_zb_start().
-    //
-    // 1. Enable network-level security (AES-128 encryption + MIC-32).
-    //    Without this, the Trust Center does not populate its internal
-    //    key tables, causing aps_secur_key_pair_get_key to fault on
-    //    first device join (A1 = 0xFFFFFFFF = uninitialised sentinel).
-    esp_zb_secur_network_security_enable(true);
+    // DIAGNOSTIC: Disable network-level security to test basic association
+    // without Transport Key exchange. If the switch joins with this config,
+    // the issue is in the key exchange, not MAC/NWK association.
+    esp_zb_secur_network_security_enable(false);
 
-    // 2. Set the ZigBeeAlliance09 global Trust Center link key.
-    //    v2.x SDK removed the implicit default; must be explicit.
+    // Still set the well-known TC key in case it's needed for TC policy
     static const uint8_t s_tc_link_key[16] = {
         0x5A, 0x69, 0x67, 0x42, 0x65, 0x65, 0x41, 0x6C,
         0x6C, 0x69, 0x61, 0x6E, 0x63, 0x65, 0x30, 0x39
     }; // "ZigBeeAlliance09"
     esp_zb_secur_TC_standard_preconfigure_key_set(s_tc_link_key);
 
-    // 3. Disable TCLK exchange requirement for commercial Tuya / MOES devices.
-    //    Allows devices to join using the standard preconfigured global link key
-    //    without an additional Transport Key handshake.
     esp_zb_secur_link_key_exchange_required_set(false);
     ezb_secur_tcpol_set_allow_rejoins_with_well_known_key(true);
 
