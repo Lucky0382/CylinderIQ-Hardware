@@ -19,9 +19,13 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_rom_sys.h"
+#include "esp_ieee802154.h"
+#include "esp_ieee802154_types.h"
 #include "psa/crypto.h"
 #include "mbedtls/aes.h"
 #include <ezbee/error.h>
@@ -373,4 +377,110 @@ ezb_err_t ezb_plat_crypto_sha256_free(ezb_crypto_context_t *ctx)
     psa_hash_operation_t *op = (psa_hash_operation_t *)ctx->ctx;
     psa_hash_abort(op);
     return EZB_ERR_NONE;
+}
+
+// ── Linker Wraps for esp-zigbee-lib fixes ──────────────────────
+
+// 1. Fix MbedTLS 3.x struct offset mismatch in precompiled aes_ccm.c.obj
+// In precompiled esp-zigbee-lib, crypto_psa_import_aes_key wrote:
+//   attr.id = usage flags (offset 8)
+//   attr.policy.usage = algorithm (offset 12)
+// In ESP-IDF 5.2.x MbedTLS 3.x, volatile keys cannot have a non-zero key_id,
+// which caused psa_import_key to reject CCM* keys with PSA_ERROR_INVALID_ARGUMENT (-135).
+psa_status_t __real_psa_import_key(const psa_key_attributes_t *attributes,
+                                  const uint8_t *data,
+                                  size_t data_length,
+                                  mbedtls_svc_key_id_t *key);
+
+psa_status_t __wrap_psa_import_key(const psa_key_attributes_t *attributes,
+                                  const uint8_t *data,
+                                  size_t data_length,
+                                  mbedtls_svc_key_id_t *key)
+{
+    if (attributes &&
+        PSA_KEY_LIFETIME_IS_VOLATILE(psa_get_key_lifetime(attributes)) &&
+        MBEDTLS_SVC_KEY_ID_GET_KEY_ID(psa_get_key_id(attributes)) != 0)
+    {
+        // Legacy esp-zigbee binary struct offset mismatch detected!
+        const uint32_t *raw = (const uint32_t *)attributes;
+        uint32_t legacy_usage = raw[2]; // offset 8 (usage flags)
+        uint32_t legacy_alg   = raw[3]; // offset 12 (algorithm)
+
+        psa_key_attributes_t fixed_attr = psa_key_attributes_init();
+        psa_set_key_type(&fixed_attr, PSA_KEY_TYPE_AES);
+        psa_set_key_bits(&fixed_attr, data_length * 8);
+        psa_set_key_usage_flags(&fixed_attr, legacy_usage | PSA_KEY_USAGE_ENCRYPT | PSA_KEY_USAGE_DECRYPT);
+        psa_set_key_algorithm(&fixed_attr, legacy_alg);
+
+        psa_status_t status = __real_psa_import_key(&fixed_attr, data, data_length, key);
+        ESP_LOGI(TAG, "psa_import_key [FIXED LEGACY MISMATCH]: usage=0x%08lx alg=0x%08lx -> kid=%lu, ret=%ld",
+                 (unsigned long)legacy_usage, (unsigned long)legacy_alg,
+                 (unsigned long)*key, (long)status);
+        return status;
+    }
+
+    return __real_psa_import_key(attributes, data, data_length, key);
+}
+
+// 2. Fix missing NWK address registration in Trust Center update device indication
+// When status == 1 (UNSECURE_JOIN), zdo_app_tc.c.obj skips nwk_address_update().
+// This caused aps_send_cmd() / aps_relay_cmd() to fail address resolution and
+// silently drop the Transport Key packet without sending it.
+extern ezb_err_t nwk_address_update(const uint8_t *ieee_addr, uint16_t short_addr, uint16_t *ref_out);
+extern void __real_apsme_update_device_indication(void *param);
+
+void __wrap_apsme_update_device_indication(void *param)
+{
+    if (param) {
+        const uint8_t *ieee = (const uint8_t *)param + 8;
+        uint16_t short_addr = *(const uint16_t *)((const uint8_t *)param + 16);
+        uint8_t status = *((const uint8_t *)param + 18);
+
+        ESP_LOGI("zb_tc", "apsme_update_device_indication: IEEE=%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X short=0x%04X status=%u",
+                 ieee[7], ieee[6], ieee[5], ieee[4],
+                 ieee[3], ieee[2], ieee[1], ieee[0],
+                 short_addr, status);
+
+        // Pre-populate address mapping so aps_send_cmd / aps_relay_cmd finds the destination address
+        uint16_t ref = 0;
+        ezb_err_t err = nwk_address_update(ieee, short_addr, &ref);
+        ESP_LOGI("zb_tc", "Pre-populating address mapping: nwk_address_update -> ret=%d ref=%u", err, ref);
+    }
+    __real_apsme_update_device_indication(param);
+}
+
+// 3. Low-level IEEE 802.15.4 Radio Transmit & Receive Diagnostics
+extern esp_err_t __real_esp_ieee802154_transmit(const uint8_t *frame, bool cca);
+esp_err_t __wrap_esp_ieee802154_transmit(const uint8_t *frame, bool cca)
+{
+    if (frame) {
+        uint8_t len = frame[0];
+        uint16_t fcf = len >= 2 ? (frame[1] | (frame[2] << 8)) : 0;
+        uint8_t seq = len >= 3 ? frame[3] : 0;
+        uint8_t type = fcf & 0x07;
+        bool ack_req = (fcf >> 5) & 1;
+        uint8_t dst_mode = (fcf >> 10) & 3;
+
+        esp_rom_printf("[RADIO TX] len=%u fcf=0x%04x (type=%u ack=%d dst_mode=%d) seq=%u\n",
+                       len, fcf, type, ack_req, dst_mode, seq);
+    }
+    return __real_esp_ieee802154_transmit(frame, cca);
+}
+
+extern void __real_esp_ieee802154_transmit_done(const uint8_t *frame, const uint8_t *ack, esp_ieee802154_frame_info_t *ack_frame_info);
+void __wrap_esp_ieee802154_transmit_done(const uint8_t *frame, const uint8_t *ack, esp_ieee802154_frame_info_t *ack_frame_info)
+{
+    esp_rom_printf("[RADIO TX DONE] ack=%s seq=%u\n",
+                   ack ? "YES" : "NO",
+                   frame ? frame[3] : 0);
+    __real_esp_ieee802154_transmit_done(frame, ack, ack_frame_info);
+}
+
+extern void __real_esp_ieee802154_transmit_failed(const uint8_t *frame, esp_ieee802154_tx_error_t error);
+void __wrap_esp_ieee802154_transmit_failed(const uint8_t *frame, esp_ieee802154_tx_error_t error)
+{
+    esp_rom_printf("[RADIO TX FAILED] error=%d seq=%u\n",
+                   (int)error,
+                   frame ? frame[3] : 0);
+    __real_esp_ieee802154_transmit_failed(frame, error);
 }

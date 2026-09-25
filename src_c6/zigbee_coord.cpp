@@ -395,8 +395,15 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
             ESP_LOGW(TAG, "Device update: null params");
             break;
         }
-        ESP_LOGI(TAG, "Device update (MAC join in progress) — short=0x%04X status=%d",
-                 params->short_addr, params->status);
+        ESP_LOGI(TAG, "Device update — short=0x%04X IEEE=%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X status=%d action=%d parent=0x%04X",
+                 params->short_addr,
+                 params->long_addr[7], params->long_addr[6], params->long_addr[5], params->long_addr[4],
+                 params->long_addr[3], params->long_addr[2], params->long_addr[1], params->long_addr[0],
+                 params->status, params->tc_action, params->parent_short);
+
+        uint16_t lookup_short = esp_zb_address_short_by_ieee(params->long_addr);
+        ESP_LOGI(TAG, "Address table check: IEEE -> short=0x%04X (expected 0x%04X)",
+                 lookup_short, params->short_addr);
         break;
     }
 
@@ -641,6 +648,7 @@ void zigbee_coord_reset_network(void)
     ESP_LOGI(TAG, "Resetting Zigbee network and clearing all paired switches...");
     zigbee_coord_clear(SWITCH_TOP);
     zigbee_coord_clear(SWITCH_BOTTOM);
+    nvs_flash_erase_partition("zigbee");
     esp_zb_lock_acquire(portMAX_DELAY);
     esp_zb_bdb_reset_via_local_action();
     esp_zb_lock_release();
