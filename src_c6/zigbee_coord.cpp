@@ -592,20 +592,20 @@ bool zigbee_coord_switch_set(switch_id_t sw, bool on)
                            : ESP_ZB_ZCL_CMD_ON_OFF_OFF_ID;
 
     esp_zb_lock_acquire(portMAX_DELAY);
-    esp_err_t err = esp_zb_zcl_on_off_cmd_req(&cmd);
+    uint8_t tsn = esp_zb_zcl_on_off_cmd_req(&cmd);
     esp_zb_lock_release();
 
-    if (err == ESP_OK) {
+    if (tsn != ESP_ZB_ZCL_INVALID_TSN) {
         // Optimistic state update
         xSemaphoreTake(s_state_mutex, portMAX_DELAY);
         s_sw[sw].on = on;
         xSemaphoreGive(s_state_mutex);
-        ESP_LOGI(TAG, "Switch %s → %s", sw == SWITCH_TOP ? "TOP" : "BOTTOM",
-                 on ? "ON" : "OFF");
+        ESP_LOGI(TAG, "Switch %s → %s (tsn=%u)", sw == SWITCH_TOP ? "TOP" : "BOTTOM",
+                 on ? "ON" : "OFF", tsn);
         return true;
     }
 
-    ESP_LOGE(TAG, "ZCL send failed: %s", esp_err_to_name(err));
+    ESP_LOGE(TAG, "ZCL send failed: invalid TSN (0xFF)");
     return false;
 }
 
