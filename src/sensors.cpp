@@ -84,12 +84,25 @@ static inline void ow_drive_low(void)
 // Reset pulse. Returns true if at least one device pulls the presence pulse.
 static bool ow_reset(void)
 {
+    ow_release();
+    ets_delay_us(10);
+    if (gpio_get_level(SENSORS_GPIO) == 0) {
+        ESP_LOGW(TAG, "OneWire line stuck LOW before reset — check pullup or short to GND");
+        return false;
+    }
+
     ow_drive_low();
     ets_delay_us(480);
     ow_release();
     ets_delay_us(70);
     bool presence = (gpio_get_level(SENSORS_GPIO) == 0);
     ets_delay_us(410);
+
+    if (gpio_get_level(SENSORS_GPIO) == 0) {
+        ESP_LOGW(TAG, "OneWire line stuck LOW after reset — held down");
+        return false;
+    }
+
     return presence;
 }
 
@@ -576,12 +589,14 @@ void sensors_init(void)
     gpio_config_t ow_cfg = {
         .pin_bit_mask = (1ULL << SENSORS_GPIO),
         .mode         = GPIO_MODE_INPUT_OUTPUT_OD,
-        .pull_up_en   = GPIO_PULLUP_DISABLE,        // external 4.7 kΩ
+        .pull_up_en   = GPIO_PULLUP_ENABLE,         // internal pullup enabled as fallback/supplement
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type    = GPIO_INTR_DISABLE,
     };
     gpio_config(&ow_cfg);
     ow_release();
+    ets_delay_us(100);
+    int idle_level = gpio_get_level(SENSORS_GPIO);
 
     // ── Leak rope (GPIO7, input with internal pullup) ─────────
     gpio_config_t leak_cfg = {
@@ -596,7 +611,8 @@ void sensors_init(void)
     // Initialise ROM array to 0xFF (unmapped)
     memset(s_roms, 0xFF, sizeof(s_roms));
 
-    ESP_LOGI(TAG, "OneWire GPIO%d initialised (open-drain)", SENSORS_GPIO);
+    ESP_LOGI(TAG, "OneWire GPIO%d initialised (open-drain, internal pullup ENABLED) — Idle line: %s",
+             SENSORS_GPIO, idle_level ? "HIGH (3.3V) ✓" : "LOW (0V — STUCK OR SHORTED TO GND) ✗");
     ESP_LOGI(TAG, "Leak rope GPIO%d initialised (input, pullup)", LEAK_ROPE_GPIO);
 }
 
