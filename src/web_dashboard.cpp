@@ -179,6 +179,57 @@ static const char s_dashboard_html[] = R"rawliteral(<!DOCTYPE html>
     </div>
   </div>
 
+  <!-- DS18B20 1-Wire Sensors & Role Mapping Panel -->
+  <div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+      <h2 style="margin: 0;">DS18B20 Temperature Sensors (Auto-Discovered)</h2>
+      <div style="font-size: 0.85rem; color: var(--muted); display: flex; gap: 10px; align-items: center;">
+        <span>Bus Status: <strong id="sensor-bus-status" style="color: var(--warning)">Scanning...</strong></span>
+        <span>Sensors: <strong id="sensor-mapped-count">--</strong> / 4</span>
+      </div>
+    </div>
+
+    <div style="overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border); color: var(--muted);">
+            <th style="padding: 8px;">Role</th>
+            <th style="padding: 8px;">Pipe Location</th>
+            <th style="padding: 8px;">ROM Address</th>
+            <th style="padding: 8px;">Current Temp</th>
+            <th style="padding: 8px;">Status</th>
+          </tr>
+        </thead>
+        <tbody id="sensor-table-body">
+          <tr><td colspan="5" style="padding: 12px; text-align: center; color: var(--muted);">Scanning 1-Wire bus...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <span style="font-size: 0.85rem; color: var(--muted);">Swap Roles:</span>
+        <select id="swap-role-a" style="background:#0f172a; border:1px solid var(--border); color:#fff; padding:6px 10px; border-radius:6px; font-size:0.85rem;">
+          <option value="0">Hot Outlet</option>
+          <option value="1">Cylinder Inlet</option>
+          <option value="2">Mains Supply</option>
+          <option value="3">Tundish</option>
+        </select>
+        <span style="color: var(--muted);">↔</span>
+        <select id="swap-role-b" style="background:#0f172a; border:1px solid var(--border); color:#fff; padding:6px 10px; border-radius:6px; font-size:0.85rem;">
+          <option value="1">Cylinder Inlet</option>
+          <option value="2" selected>Mains Supply</option>
+          <option value="0">Hot Outlet</option>
+          <option value="3">Tundish</option>
+        </select>
+        <button class="btn btn-secondary" onclick="swapSensorRoles()" style="padding:6px 12px; font-size:0.85rem;">Swap & Save</button>
+      </div>
+      <div>
+        <button class="btn btn-secondary" onclick="rescanSensors()" style="padding:6px 12px; font-size:0.85rem;">🔄 Auto-Detect & Map Now</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Hardware Momentary Buttons Guide -->
   <div class="card">
     <h2>Hardware Commissioning Buttons</h2>
@@ -435,12 +486,90 @@ async function connectHomeWifi() {
   } catch(e) { alert('Failed to save Wi-Fi config'); }
 }
 
+async function updateSensorMap() {
+  try {
+    const res = await fetch('/sensors/map');
+    if (res.ok) {
+      const data = await res.json();
+      const busEl = document.getElementById('sensor-bus-status');
+      const countEl = document.getElementById('sensor-mapped-count');
+      if (busEl) {
+        if (data.mapped) {
+          busEl.innerText = data.from_nvs ? 'Active (NVS Saved)' : 'Active (Auto-Ranked)';
+          busEl.style.color = 'var(--success)';
+        } else {
+          busEl.innerText = (data.bus_count || 0) + ' found on bus (mapping incomplete)';
+          busEl.style.color = 'var(--warning)';
+        }
+      }
+      if (countEl) countEl.innerText = data.bus_count || 0;
+
+      const tbody = document.getElementById('sensor-table-body');
+      if (tbody && data.roles) {
+        const descs = [
+          "Hot cylinder top pipe (Hottest)",
+          "Inlet post-NRV (Slightly warm)",
+          "Cold mains water supply (Coldest)",
+          "PRV discharge pipe (Ambient)"
+        ];
+        tbody.innerHTML = data.roles.map((r, i) => `
+          <tr style="border-bottom: 1px solid #1e293b;">
+            <td style="padding: 8px; font-weight: 600; color: #f8fafc;">${r.name}</td>
+            <td style="padding: 8px; color: var(--muted); font-size: 0.8rem;">${descs[i] || ''}</td>
+            <td style="padding: 8px;"><code>${r.rom}</code></td>
+            <td style="padding: 8px; font-weight: 600; color: #38bdf8;">${r.temperature ? r.temperature.toFixed(2) + ' °C' : '--'}</td>
+            <td style="padding: 8px;">
+              <span class="status-tag ${r.present ? 'status-paired' : 'status-unpaired'}">
+                ${r.present ? 'Connected' : 'Offline'}
+              </span>
+            </td>
+          </tr>
+        `).join('');
+      }
+    }
+  } catch(e) {}
+}
+
+async function rescanSensors() {
+  if (!confirm('Re-scan 1-Wire bus and auto-map roles by temperature ranking?')) return;
+  try {
+    const res = await fetch('/sensors/rescan', { method: 'POST' });
+    if (res.ok) {
+      alert('Rescan initiated! Hub is reading temperatures and ranking sensors...');
+      setTimeout(updateSensorMap, 2000);
+    }
+  } catch(e) { alert('Failed to initiate rescan: ' + e); }
+}
+
+async function swapSensorRoles() {
+  const a = parseInt(document.getElementById('swap-role-a').value);
+  const b = parseInt(document.getElementById('swap-role-b').value);
+  if (a === b) { alert('Please select two different roles to swap'); return; }
+  try {
+    const res = await fetch('/sensors/swap', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({a: a, b: b})
+    });
+    if (res.ok) {
+      alert('Roles swapped and saved to NVS!');
+      updateSensorMap();
+      updateTelemetry();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert('Swap failed: ' + (err.error || 'Server error'));
+    }
+  } catch(e) { alert('Swap failed: ' + e); }
+}
+
 setInterval(updateTelemetry, 2000);
 setInterval(updateSwitches, 2500);
 setInterval(updatePairState, 1500);
+setInterval(updateSensorMap, 3000);
 updateTelemetry();
 updateSwitches();
 updatePairState();
+updateSensorMap();
 </script>
 </body>
 </html>

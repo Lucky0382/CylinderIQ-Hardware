@@ -84,6 +84,13 @@ void    nvs_set_off_peak_ppm(float v);
 float   nvs_get_super_off_ppm(void);     // default 0.08
 void    nvs_set_super_off_ppm(float v);
 
+// ── Sensor ROM mapping ──────────────────────────────────────
+// Stores auto-discovered DS18B20 ROM addresses indexed by role.
+// 4 sensors × 8 bytes = 32-byte blob in NVS key "sr_roms".
+bool    nvs_get_sensor_roms(uint8_t roms[4][8]);   // false if not stored
+void    nvs_set_sensor_roms(const uint8_t roms[4][8]);
+void    nvs_clear_sensor_roms(void);
+
 // ── Lifecycle ────────────────────────────────────────────────
 // Must be called once at boot before any get/set.
 void    nvs_store_init(void);

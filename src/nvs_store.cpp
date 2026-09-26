@@ -333,3 +333,50 @@ void  nvs_set_off_peak_ppm(float v)  { nvs_set_float_key("off_peak_ppm", v); }
 
 float nvs_get_super_off_ppm(void)    { return nvs_get_float_default("super_off_ppm", 0.08f); }
 void  nvs_set_super_off_ppm(float v) { nvs_set_float_key("super_off_ppm", v); }
+
+// ── Sensor ROM mapping ──────────────────────────────────────
+
+bool nvs_get_sensor_roms(uint8_t roms[4][8])
+{
+    xSemaphoreTake(s_nvs_mutex, portMAX_DELAY);
+    nvs_handle_t h = nvs_open_ro();
+    bool ok = false;
+    if (h) {
+        size_t len = 32;  // 4 × 8 bytes
+        esp_err_t err = nvs_get_blob(h, "sr_roms", roms, &len);
+        nvs_close(h);
+        if (err == ESP_OK && len == 32) {
+            // Validate: all 4 ROMs must start with DS18B20 family code 0x28
+            ok = (roms[0][0] == 0x28 && roms[1][0] == 0x28 &&
+                  roms[2][0] == 0x28 && roms[3][0] == 0x28);
+        }
+    }
+    xSemaphoreGive(s_nvs_mutex);
+    return ok;
+}
+
+void nvs_set_sensor_roms(const uint8_t roms[4][8])
+{
+    xSemaphoreTake(s_nvs_mutex, portMAX_DELAY);
+    nvs_handle_t h = nvs_open_rw();
+    if (h) {
+        esp_err_t err = nvs_set_blob(h, "sr_roms", roms, 32);
+        if (err == ESP_OK) nvs_commit(h);
+        nvs_close(h);
+        ESP_LOGI("nvs_store", "Sensor ROMs saved to NVS (32 bytes)");
+    }
+    xSemaphoreGive(s_nvs_mutex);
+}
+
+void nvs_clear_sensor_roms(void)
+{
+    xSemaphoreTake(s_nvs_mutex, portMAX_DELAY);
+    nvs_handle_t h = nvs_open_rw();
+    if (h) {
+        nvs_erase_key(h, "sr_roms");
+        nvs_commit(h);
+        nvs_close(h);
+        ESP_LOGI("nvs_store", "Sensor ROMs cleared from NVS");
+    }
+    xSemaphoreGive(s_nvs_mutex);
+}

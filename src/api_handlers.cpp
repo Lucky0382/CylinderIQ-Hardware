@@ -396,6 +396,89 @@ static char *handle_v1_sensor(const char *sensor_name_decoded, int *status)
     return strdup(buf);
 }
 
+// ── Sensor Map & Auto-Discovery Handlers ──────────────────────
+
+static int parse_role_item(cJSON *item)
+{
+    if (!item) return -1;
+    if (cJSON_IsNumber(item)) return item->valueint;
+    if (cJSON_IsString(item)) {
+        const char *s = item->valuestring;
+        if (strcmp(s, "hot_outlet") == 0 || strcmp(s, "hot") == 0) return 0;
+        if (strcmp(s, "cylinder_inlet") == 0 || strcmp(s, "inlet") == 0) return 1;
+        if (strcmp(s, "mains_supply") == 0 || strcmp(s, "mains") == 0) return 2;
+        if (strcmp(s, "tundish") == 0) return 3;
+    }
+    return -1;
+}
+
+static char *handle_get_sensor_map(void)
+{
+    sensor_map_t m = sensors_get_map();
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "mapped", m.mapped);
+    cJSON_AddNumberToObject(root, "bus_count", m.bus_count);
+    cJSON_AddBoolToObject(root, "from_nvs", m.from_nvs);
+
+    const char *names[SENSOR_COUNT] = {
+        "hot_outlet", "cylinder_inlet", "mains_supply", "tundish"
+    };
+
+    cJSON *roles = cJSON_CreateArray();
+    for (int i = 0; i < SENSOR_COUNT; i++) {
+        cJSON *r = cJSON_CreateObject();
+        cJSON_AddNumberToObject(r, "index", i);
+        cJSON_AddStringToObject(r, "name", names[i]);
+
+        char rom_str[17];
+        snprintf(rom_str, sizeof(rom_str), "%02X%02X%02X%02X%02X%02X%02X%02X",
+                 m.roms[i][0], m.roms[i][1], m.roms[i][2], m.roms[i][3],
+                 m.roms[i][4], m.roms[i][5], m.roms[i][6], m.roms[i][7]);
+        cJSON_AddStringToObject(r, "rom", rom_str);
+        cJSON_AddNumberToObject(r, "temperature", m.temps[i]);
+        cJSON_AddBoolToObject(r, "present", m.present[i]);
+        cJSON_AddItemToArray(roles, r);
+    }
+    cJSON_AddItemToObject(root, "roles", roles);
+    return json_to_str(root);
+}
+
+static char *handle_post_sensor_rescan(void)
+{
+    sensors_rescan();
+    return strdup("{\"ok\":true,\"message\":\"rescan initiated\"}");
+}
+
+static char *handle_post_sensor_swap(const char *body, int *status)
+{
+    if (!body || strlen(body) == 0) {
+        *status = 400;
+        return make_error("missing body");
+    }
+    cJSON *root = cJSON_Parse(body);
+    if (!root) {
+        *status = 400;
+        return make_error("invalid json");
+    }
+
+    int role_a = parse_role_item(cJSON_GetObjectItem(root, "a"));
+    int role_b = parse_role_item(cJSON_GetObjectItem(root, "b"));
+    cJSON_Delete(root);
+
+    if (role_a < 0 || role_a >= SENSOR_COUNT || role_b < 0 || role_b >= SENSOR_COUNT || role_a == role_b) {
+        *status = 400;
+        return make_error("invalid role_a or role_b (use indices 0-3 or names hot_outlet, cylinder_inlet, mains_supply, tundish)");
+    }
+
+    bool ok = sensors_swap_roles(role_a, role_b);
+    if (!ok) {
+        *status = 500;
+        return make_error("failed to swap roles");
+    }
+
+    return strdup("{\"ok\":true,\"message\":\"roles swapped and saved to NVS\"}");
+}
+
 // ──────────────────────────────────────────────────────────────
 // Main dispatcher
 // ──────────────────────────────────────────────────────────────
@@ -422,6 +505,21 @@ void api_dispatch(const char *method,
 
     if (strcmp(path, "/sensors") == 0 && strcmp(method, "GET") == 0) {
         *resp_body = handle_get_sensors();
+        return;
+    }
+
+    if ((strcmp(path, "/sensors/map") == 0 || strcmp(path, "/api/sensor_map") == 0) && strcmp(method, "GET") == 0) {
+        *resp_body = handle_get_sensor_map();
+        return;
+    }
+
+    if ((strcmp(path, "/sensors/rescan") == 0 || strcmp(path, "/api/sensor_rescan") == 0) && strcmp(method, "POST") == 0) {
+        *resp_body = handle_post_sensor_rescan();
+        return;
+    }
+
+    if ((strcmp(path, "/sensors/swap") == 0 || strcmp(path, "/api/sensor_swap") == 0) && strcmp(method, "POST") == 0) {
+        *resp_body = handle_post_sensor_swap(body, resp_status);
         return;
     }
 
