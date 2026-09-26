@@ -90,6 +90,8 @@ void    nvs_set_super_off_ppm(float v);
 bool    nvs_get_sensor_roms(uint8_t roms[4][8]);   // false if not stored
 void    nvs_set_sensor_roms(const uint8_t roms[4][8]);
 void    nvs_clear_sensor_roms(void);
+int32_t nvs_get_ow_gpio(void);                     // default 7
+void    nvs_set_ow_gpio(int32_t pin);
 
 // ── Lifecycle ────────────────────────────────────────────────
 // Must be called once at boot before any get/set.

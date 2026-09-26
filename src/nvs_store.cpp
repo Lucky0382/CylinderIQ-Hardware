@@ -380,3 +380,13 @@ void nvs_clear_sensor_roms(void)
     }
     xSemaphoreGive(s_nvs_mutex);
 }
+
+int32_t nvs_get_ow_gpio(void)
+{
+    return nvs_get_i32_default("ow_gpio", 7);  // Default GPIO 7 per user hardware
+}
+
+void nvs_set_ow_gpio(int32_t pin)
+{
+    nvs_set_i32_key("ow_gpio", pin);
+}

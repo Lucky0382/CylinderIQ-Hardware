@@ -183,8 +183,9 @@ static const char s_dashboard_html[] = R"rawliteral(<!DOCTYPE html>
   <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
       <h2 style="margin: 0;">DS18B20 Temperature Sensors (Auto-Discovered)</h2>
-      <div style="font-size: 0.85rem; color: var(--muted); display: flex; gap: 10px; align-items: center;">
-        <span>Bus Status: <strong id="sensor-bus-status" style="color: var(--warning)">Scanning...</strong></span>
+      <div style="font-size: 0.85rem; color: var(--muted); display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <span>Active Pin: <strong id="val-ow-gpio" style="color: #38bdf8;">GPIO 7</strong></span>
+        <span>Bus: <strong id="sensor-bus-status" style="color: var(--warning)">Scanning...</strong></span>
         <span>Sensors: <strong id="sensor-mapped-count">--</strong> / 4</span>
       </div>
     </div>
@@ -224,8 +225,17 @@ static const char s_dashboard_html[] = R"rawliteral(<!DOCTYPE html>
         </select>
         <button class="btn btn-secondary" onclick="swapSensorRoles()" style="padding:6px 12px; font-size:0.85rem;">Swap & Save</button>
       </div>
-      <div>
-        <button class="btn btn-secondary" onclick="rescanSensors()" style="padding:6px 12px; font-size:0.85rem;">🔄 Auto-Detect & Map Now</button>
+      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <span style="font-size: 0.85rem; color: var(--muted);">Pin:</span>
+        <select id="select-ow-pin" style="background:#0f172a; border:1px solid var(--border); color:#fff; padding:6px 8px; border-radius:6px; font-size:0.85rem;">
+          <option value="7" selected>GPIO 7</option>
+          <option value="6">GPIO 6</option>
+          <option value="8">GPIO 8</option>
+          <option value="1">GPIO 1</option>
+          <option value="2">GPIO 2</option>
+        </select>
+        <button class="btn btn-secondary" onclick="switchSensorPin()" style="padding:6px 10px; font-size:0.85rem;">Set Pin</button>
+        <button class="btn btn-secondary" onclick="rescanSensors()" style="padding:6px 12px; font-size:0.85rem;">🔄 Auto-Scan All Pins</button>
       </div>
     </div>
   </div>
@@ -504,6 +514,13 @@ async function updateSensorMap() {
       }
       if (countEl) countEl.innerText = data.bus_count || 0;
 
+      if (data.active_gpio !== undefined) {
+        const pinEl = document.getElementById('val-ow-gpio');
+        if (pinEl) pinEl.innerText = 'GPIO ' + data.active_gpio;
+        const selPin = document.getElementById('select-ow-pin');
+        if (selPin && document.activeElement !== selPin) selPin.value = String(data.active_gpio);
+      }
+
       const tbody = document.getElementById('sensor-table-body');
       if (tbody && data.roles) {
         const descs = [
@@ -530,12 +547,27 @@ async function updateSensorMap() {
   } catch(e) {}
 }
 
+async function switchSensorPin() {
+  const pin = parseInt(document.getElementById('select-ow-pin').value);
+  try {
+    const res = await fetch('/sensors/gpio', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pin: pin})
+    });
+    if (res.ok) {
+      alert('OneWire pin set to GPIO ' + pin + '! Scanning...');
+      setTimeout(updateSensorMap, 1500);
+    }
+  } catch(e) { alert('Failed to switch pin: ' + e); }
+}
+
 async function rescanSensors() {
-  if (!confirm('Re-scan 1-Wire bus and auto-map roles by temperature ranking?')) return;
+  if (!confirm('Scan candidate pins (GPIO 7, 6, 8, etc.) and auto-map roles by temperature?')) return;
   try {
     const res = await fetch('/sensors/rescan', { method: 'POST' });
     if (res.ok) {
-      alert('Rescan initiated! Hub is reading temperatures and ranking sensors...');
+      alert('Rescan initiated! Hub is probing candidate pins and reading temperatures...');
       setTimeout(updateSensorMap, 2000);
     }
   } catch(e) { alert('Failed to initiate rescan: ' + e); }

@@ -419,6 +419,8 @@ static char *handle_get_sensor_map(void)
     cJSON_AddBoolToObject(root, "mapped", m.mapped);
     cJSON_AddNumberToObject(root, "bus_count", m.bus_count);
     cJSON_AddBoolToObject(root, "from_nvs", m.from_nvs);
+    cJSON_AddNumberToObject(root, "active_gpio", m.active_gpio);
+    cJSON_AddNumberToObject(root, "leak_gpio", m.leak_gpio);
 
     const char *names[SENSOR_COUNT] = {
         "hot_outlet", "cylinder_inlet", "mains_supply", "tundish"
@@ -479,6 +481,31 @@ static char *handle_post_sensor_swap(const char *body, int *status)
     return strdup("{\"ok\":true,\"message\":\"roles swapped and saved to NVS\"}");
 }
 
+static char *handle_post_sensor_gpio(const char *body, int *status)
+{
+    if (!body || strlen(body) == 0) {
+        *status = 400;
+        return make_error("missing body");
+    }
+    cJSON *root = cJSON_Parse(body);
+    if (!root) {
+        *status = 400;
+        return make_error("invalid json");
+    }
+    cJSON *j_pin = cJSON_GetObjectItem(root, "pin");
+    if (!j_pin || !cJSON_IsNumber(j_pin)) {
+        cJSON_Delete(root);
+        *status = 400;
+        return make_error("missing numeric pin");
+    }
+    int pin = j_pin->valueint;
+    cJSON_Delete(root);
+    sensors_set_gpio(pin);
+    char buf[64];
+    snprintf(buf, sizeof(buf), "{\"ok\":true,\"active_gpio\":%d}", pin);
+    return strdup(buf);
+}
+
 // ──────────────────────────────────────────────────────────────
 // Main dispatcher
 // ──────────────────────────────────────────────────────────────
@@ -520,6 +547,11 @@ void api_dispatch(const char *method,
 
     if ((strcmp(path, "/sensors/swap") == 0 || strcmp(path, "/api/sensor_swap") == 0) && strcmp(method, "POST") == 0) {
         *resp_body = handle_post_sensor_swap(body, resp_status);
+        return;
+    }
+
+    if ((strcmp(path, "/sensors/gpio") == 0 || strcmp(path, "/api/sensor_gpio") == 0) && strcmp(method, "POST") == 0) {
+        *resp_body = handle_post_sensor_gpio(body, resp_status);
         return;
     }
 

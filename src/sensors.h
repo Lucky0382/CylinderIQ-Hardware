@@ -29,8 +29,8 @@ extern "C" {
 //   sensors_swap_roles() — swap two role assignments and save to NVS
 // ──────────────────────────────────────────────────────────────
 
-#define SENSORS_GPIO        GPIO_NUM_6   // OneWire data line
-#define LEAK_ROPE_GPIO      GPIO_NUM_7   // Leak detection rope — HIGH=dry, LOW=wet
+#define DEFAULT_SENSORS_GPIO    GPIO_NUM_7   // Default to GPIO 7 per hardware wiring
+#define DEFAULT_LEAK_GPIO       GPIO_NUM_6   // Default leak rope to GPIO 6
 
 #define SENSOR_COUNT        4
 #define MAX_BUS_SENSORS     8   // Max sensors tracked during discovery
@@ -54,6 +54,8 @@ typedef struct {
     bool    mapped;                             // true if all 4 roles assigned
     int     bus_count;                          // sensors discovered on bus
     bool    from_nvs;                           // mapping was loaded from NVS
+    int     active_gpio;                        // GPIO pin used for OneWire bus
+    int     leak_gpio;                          // GPIO pin used for leak rope
     uint8_t roms[SENSOR_COUNT][8];              // ROM per role (indexed by SENSOR_IDX_*)
     float   temps[SENSOR_COUNT];                // last temperature per role
     bool    present[SENSOR_COUNT];              // sensor responding on bus
@@ -76,6 +78,12 @@ void sensors_rescan(void);
 
 // Swap two role assignments (by SENSOR_IDX_*) and persist to NVS.
 bool sensors_swap_roles(int role_a, int role_b);
+
+// Get current active OneWire GPIO pin.
+int  sensors_get_gpio(void);
+
+// Set active OneWire GPIO pin (persisted to NVS) and trigger re-scan.
+void sensors_set_gpio(int pin);
 
 #ifdef __cplusplus
 }

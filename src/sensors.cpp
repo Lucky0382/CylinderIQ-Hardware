@@ -48,6 +48,26 @@ static bool    s_from_nvs = false;
 static int     s_bus_count = 0;
 static volatile bool s_rescan_requested = false;
 
+// Dynamic GPIO pins (persisted in NVS)
+static gpio_num_t s_sensors_gpio = DEFAULT_SENSORS_GPIO; // GPIO 7 default
+static gpio_num_t s_leak_gpio    = DEFAULT_LEAK_GPIO;    // GPIO 6 default
+
+// Candidate pins to scan if sensors are not found on the default pin
+static const gpio_num_t CANDIDATE_PINS[] = {
+    GPIO_NUM_7,
+    GPIO_NUM_6,
+    GPIO_NUM_8,
+    GPIO_NUM_1,
+    GPIO_NUM_2,
+    GPIO_NUM_3,
+    GPIO_NUM_9,
+    GPIO_NUM_10,
+    GPIO_NUM_11,
+    GPIO_NUM_12,
+    GPIO_NUM_13,
+    GPIO_NUM_14,
+};
+
 // Per-role live state
 static float s_role_temps[SENSOR_COUNT] = {0};
 static bool  s_role_present[SENSOR_COUNT] = {false};
@@ -60,25 +80,46 @@ static SemaphoreHandle_t s_mutex;
 
 // ──────────────────────────────────────────────────────────────
 // OneWire — GPIO open-drain bit-bang
-//
-// Hardware: GPIO6 configured as OUTPUT_OD (open-drain).
-// External 4.7 kΩ pullup to 3.3 V required on the bus.
-//
-// Timing uses ets_delay_us() inside portMUX critical sections so that
-// task preemption or ISR jitter does not corrupt DS18B20 bit windows.
-// Each critical section is ≤ 70 µs (one bit slot) — safe for esp-idf SMP.
 // ──────────────────────────────────────────────────────────────
 
 static portMUX_TYPE s_ow_mux = portMUX_INITIALIZER_UNLOCKED;
 
 static inline void ow_release(void)
 {
-    gpio_set_level(SENSORS_GPIO, 1);
+    gpio_set_level(s_sensors_gpio, 1);
 }
 
 static inline void ow_drive_low(void)
 {
-    gpio_set_level(SENSORS_GPIO, 0);
+    gpio_set_level(s_sensors_gpio, 0);
+}
+
+static void configure_ow_pin(gpio_num_t pin)
+{
+    gpio_config_t ow_cfg = {
+        .pin_bit_mask = (1ULL << pin),
+        .mode         = GPIO_MODE_INPUT_OUTPUT_OD,
+        .pull_up_en   = GPIO_PULLUP_ENABLE,         // internal pullup enabled
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&ow_cfg);
+    s_sensors_gpio = pin;
+    ow_release();
+    ets_delay_us(100);
+}
+
+static void configure_leak_pin(gpio_num_t pin)
+{
+    gpio_config_t leak_cfg = {
+        .pin_bit_mask = (1ULL << pin),
+        .mode         = GPIO_MODE_INPUT,
+        .pull_up_en   = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&leak_cfg);
+    s_leak_gpio = pin;
 }
 
 // Reset pulse. Returns true if at least one device pulls the presence pulse.
@@ -86,8 +127,8 @@ static bool ow_reset(void)
 {
     ow_release();
     ets_delay_us(10);
-    if (gpio_get_level(SENSORS_GPIO) == 0) {
-        ESP_LOGW(TAG, "OneWire line stuck LOW before reset — check pullup or short to GND");
+    if (gpio_get_level(s_sensors_gpio) == 0) {
+        ESP_LOGW(TAG, "OneWire pin %d stuck LOW before reset — check pullup or short to GND", (int)s_sensors_gpio);
         return false;
     }
 
@@ -95,11 +136,11 @@ static bool ow_reset(void)
     ets_delay_us(480);
     ow_release();
     ets_delay_us(70);
-    bool presence = (gpio_get_level(SENSORS_GPIO) == 0);
+    bool presence = (gpio_get_level(s_sensors_gpio) == 0);
     ets_delay_us(410);
 
-    if (gpio_get_level(SENSORS_GPIO) == 0) {
-        ESP_LOGW(TAG, "OneWire line stuck LOW after reset — held down");
+    if (gpio_get_level(s_sensors_gpio) == 0) {
+        ESP_LOGW(TAG, "OneWire pin %d stuck LOW after reset — held down", (int)s_sensors_gpio);
         return false;
     }
 
@@ -131,7 +172,7 @@ static uint8_t ow_read_bit(void)
     ets_delay_us(3);
     ow_release();
     ets_delay_us(10);
-    uint8_t bit = (uint8_t)gpio_get_level(SENSORS_GPIO);
+    uint8_t bit = (uint8_t)gpio_get_level(s_sensors_gpio);
     ets_delay_us(47);
     portEXIT_CRITICAL(&s_ow_mux);
     return bit;
@@ -341,7 +382,7 @@ static bool ds18b20_read_temp(const uint8_t *rom, float *temp_c)
 static int discover_all_roms(uint8_t roms[][8], int max_count)
 {
     ESP_LOGI(TAG, "═══════════════════════════════════════════════════");
-    ESP_LOGI(TAG, "  OneWire ROM Discovery — scanning bus on GPIO%d", SENSORS_GPIO);
+    ESP_LOGI(TAG, "  OneWire ROM Discovery — scanning bus on GPIO%d", (int)s_sensors_gpio);
     ESP_LOGI(TAG, "═══════════════════════════════════════════════════");
 
     int count = 0;
@@ -356,8 +397,8 @@ static int discover_all_roms(uint8_t roms[][8], int max_count)
     }
 
     if (count == 0) {
-        ESP_LOGE(TAG, "  *** NO DS18B20 SENSORS FOUND ON BUS ***");
-        ESP_LOGE(TAG, "  Check wiring: GPIO6 → DS18B20 data, 4.7kΩ pullup to 3.3V");
+        ESP_LOGE(TAG, "  *** NO DS18B20 SENSORS FOUND ON GPIO%d ***", (int)s_sensors_gpio);
+        ESP_LOGE(TAG, "  Check wiring: GPIO%d → DS18B20 data, 4.7kΩ pullup to 3.3V", (int)s_sensors_gpio);
     } else {
         ESP_LOGI(TAG, "  Total sensors found: %d", count);
     }
@@ -557,10 +598,41 @@ static void discover_and_map(void)
     // ── Discover all sensors on the bus ──────────────────────
     uint8_t disc_roms[MAX_BUS_SENSORS][8];
     int disc_count = discover_all_roms(disc_roms, MAX_BUS_SENSORS);
+
+    // If no sensors found on current pin, probe all candidate pins!
+    if (disc_count == 0) {
+        ESP_LOGW(TAG, "No sensors on GPIO%d — probing candidate pins for DS18B20...", (int)s_sensors_gpio);
+
+        for (size_t i = 0; i < sizeof(CANDIDATE_PINS)/sizeof(CANDIDATE_PINS[0]); i++) {
+            gpio_num_t cand = CANDIDATE_PINS[i];
+            if (cand == s_sensors_gpio) continue;
+
+            ESP_LOGI(TAG, "Probing GPIO%d for OneWire...", (int)cand);
+            configure_ow_pin(cand);
+            vTaskDelay(pdMS_TO_TICKS(15));
+
+            if (!ow_reset()) {
+                continue;
+            }
+
+            // Presence pulse detected! Try discovering ROMs
+            disc_count = discover_all_roms(disc_roms, MAX_BUS_SENSORS);
+            if (disc_count > 0) {
+                ESP_LOGI(TAG, "🎯 FOUND %d DS18B20 SENSORS ON GPIO%d! Auto-configuring OneWire=GPIO%d",
+                         disc_count, (int)cand, (int)cand);
+                s_sensors_gpio = cand;
+                s_leak_gpio = (s_sensors_gpio == GPIO_NUM_7) ? GPIO_NUM_6 : GPIO_NUM_7;
+                configure_leak_pin(s_leak_gpio);
+                nvs_set_ow_gpio((int32_t)s_sensors_gpio);
+                break;
+            }
+        }
+    }
+
     s_bus_count = disc_count;
 
     if (disc_count == 0) {
-        ESP_LOGE(TAG, "No sensors on bus — will retry next cycle");
+        ESP_LOGE(TAG, "No sensors found on any probed pin — will retry next cycle");
         s_mapped = false;
         return;
     }
@@ -585,35 +657,22 @@ void sensors_init(void)
     s_mutex = xSemaphoreCreateMutex();
     configASSERT(s_mutex);
 
-    // ── OneWire bus (GPIO6, open-drain) ──────────────────────
-    gpio_config_t ow_cfg = {
-        .pin_bit_mask = (1ULL << SENSORS_GPIO),
-        .mode         = GPIO_MODE_INPUT_OUTPUT_OD,
-        .pull_up_en   = GPIO_PULLUP_ENABLE,         // internal pullup enabled as fallback/supplement
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type    = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&ow_cfg);
-    ow_release();
-    ets_delay_us(100);
-    int idle_level = gpio_get_level(SENSORS_GPIO);
+    // Load stored OneWire GPIO from NVS (defaults to GPIO 7 per user hardware)
+    int32_t saved_pin = nvs_get_ow_gpio();
+    s_sensors_gpio = (gpio_num_t)saved_pin;
+    s_leak_gpio    = (s_sensors_gpio == GPIO_NUM_7) ? GPIO_NUM_6 : GPIO_NUM_7;
 
-    // ── Leak rope (GPIO7, input with internal pullup) ─────────
-    gpio_config_t leak_cfg = {
-        .pin_bit_mask = (1ULL << LEAK_ROPE_GPIO),
-        .mode         = GPIO_MODE_INPUT,
-        .pull_up_en   = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type    = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&leak_cfg);
+    configure_ow_pin(s_sensors_gpio);
+    configure_leak_pin(s_leak_gpio);
+
+    int idle_level = gpio_get_level(s_sensors_gpio);
 
     // Initialise ROM array to 0xFF (unmapped)
     memset(s_roms, 0xFF, sizeof(s_roms));
 
     ESP_LOGI(TAG, "OneWire GPIO%d initialised (open-drain, internal pullup ENABLED) — Idle line: %s",
-             SENSORS_GPIO, idle_level ? "HIGH (3.3V) ✓" : "LOW (0V — STUCK OR SHORTED TO GND) ✗");
-    ESP_LOGI(TAG, "Leak rope GPIO%d initialised (input, pullup)", LEAK_ROPE_GPIO);
+             (int)s_sensors_gpio, idle_level ? "HIGH (3.3V) ✓" : "LOW (0V — STUCK OR SHORTED) ✗");
+    ESP_LOGI(TAG, "Leak rope GPIO%d initialised (input, pullup)", (int)s_leak_gpio);
 }
 
 void sensors_task(void *arg)
@@ -672,10 +731,10 @@ void sensors_task(void *arg)
             }
         }
 
-        // ── 4. Read leak rope (GPIO7, active-low) ────────────
-        bool leak_wet = (gpio_get_level(LEAK_ROPE_GPIO) == 0);
+        // ── 4. Read leak rope (active-low) ──────────────────
+        bool leak_wet = (gpio_get_level(s_leak_gpio) == 0);
         if (leak_wet) {
-            ESP_LOGW(TAG, "LEAK DETECTED — rope GPIO%d LOW", LEAK_ROPE_GPIO);
+            ESP_LOGW(TAG, "LEAK DETECTED — rope GPIO%d LOW", (int)s_leak_gpio);
         }
 
         // ── 5. Update shared readings ─────────────────────────
@@ -727,14 +786,32 @@ sensor_map_t sensors_get_map(void)
 {
     sensor_map_t map;
     xSemaphoreTake(s_mutex, portMAX_DELAY);
-    map.mapped    = s_mapped;
-    map.bus_count = s_bus_count;
-    map.from_nvs  = s_from_nvs;
+    map.mapped      = s_mapped;
+    map.bus_count   = s_bus_count;
+    map.from_nvs    = s_from_nvs;
+    map.active_gpio = (int)s_sensors_gpio;
+    map.leak_gpio   = (int)s_leak_gpio;
     memcpy(map.roms, s_roms, sizeof(s_roms));
     memcpy(map.temps, s_role_temps, sizeof(s_role_temps));
     memcpy(map.present, s_role_present, sizeof(s_role_present));
     xSemaphoreGive(s_mutex);
     return map;
+}
+
+int sensors_get_gpio(void)
+{
+    return (int)s_sensors_gpio;
+}
+
+void sensors_set_gpio(int pin)
+{
+    if (pin < 0 || pin > 48) return;
+    s_sensors_gpio = (gpio_num_t)pin;
+    s_leak_gpio = (s_sensors_gpio == GPIO_NUM_7) ? GPIO_NUM_6 : GPIO_NUM_7;
+    configure_ow_pin(s_sensors_gpio);
+    configure_leak_pin(s_leak_gpio);
+    nvs_set_ow_gpio((int32_t)s_sensors_gpio);
+    sensors_rescan();
 }
 
 void sensors_rescan(void)
