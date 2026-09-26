@@ -34,23 +34,40 @@ static void console_rx_task(void *arg)
             if (p) *p = '\0';
             if (strlen(line) == 0) continue;
 
-            if (strcmp(line, "pair") == 0 || strcmp(line, "p") == 0) {
+            if (strcmp(line, "pair") == 0 || strcmp(line, "p") == 0 || strcmp(line, "pair top") == 0) {
                 ESP_LOGI(TAG, "Console CMD: Opening pairing window for 180s (TOP slot)");
                 zigbee_coord_permit_join(SWITCH_TOP, 180);
+            } else if (strcmp(line, "pair bot") == 0 || strcmp(line, "pair bottom") == 0) {
+                ESP_LOGI(TAG, "Console CMD: Opening pairing window for 180s (BOTTOM slot)");
+                zigbee_coord_permit_join(SWITCH_BOTTOM, 180);
+            } else if (strcmp(line, "pair shower") == 0 || strcmp(line, "pair shw") == 0) {
+                ESP_LOGI(TAG, "Console CMD: Opening pairing window for 180s (SHOWER slot)");
+                zigbee_coord_permit_join(SWITCH_SHOWER, 180);
+            } else if (strcmp(line, "pair bath") == 0 || strcmp(line, "pair bth") == 0) {
+                ESP_LOGI(TAG, "Console CMD: Opening pairing window for 180s (BATH slot)");
+                zigbee_coord_permit_join(SWITCH_BATH, 180);
             } else if (strcmp(line, "status") == 0 || strcmp(line, "s") == 0) {
                 zb_switch_t top = zigbee_coord_switch_get(SWITCH_TOP);
                 zb_switch_t bot = zigbee_coord_switch_get(SWITCH_BOTTOM);
+                zb_switch_t shw = zigbee_coord_switch_get(SWITCH_SHOWER);
+                zb_switch_t bth = zigbee_coord_switch_get(SWITCH_BATH);
                 zb_pair_state_t ps = zigbee_coord_pair_state();
                 uint16_t pan = 0; uint8_t ch = 0; bool online = false;
                 zigbee_coord_get_network_info(&pan, &ch, &online);
+                const char *targets[] = {"TOP", "BOTTOM", "SHOWER", "BATH"};
+                const char *tgt = (ps.target >= 0 && ps.target < 4) ? targets[ps.target] : "NONE";
                 ESP_LOGI(TAG, "=== COORDINATOR STATUS ===");
                 ESP_LOGI(TAG, "Network:       channel=%d PAN=0x%04X online=%s", ch, pan, online ? "YES" : "NO");
                 ESP_LOGI(TAG, "TOP switch:    paired=%d short=0x%04X state=%s ep=%d",
                          top.paired, top.short_addr, top.on ? "ON" : "OFF", top.endpoint);
                 ESP_LOGI(TAG, "BOTTOM switch: paired=%d short=0x%04X state=%s ep=%d",
                          bot.paired, bot.short_addr, bot.on ? "ON" : "OFF", bot.endpoint);
+                ESP_LOGI(TAG, "SHOWER valve:  paired=%d short=0x%04X state=%s ep=%d",
+                         shw.paired, shw.short_addr, shw.on ? "OPEN" : "CLOSED", shw.endpoint);
+                ESP_LOGI(TAG, "BATH valve:    paired=%d short=0x%04X state=%s ep=%d",
+                         bth.paired, bth.short_addr, bth.on ? "OPEN" : "CLOSED", bth.endpoint);
                 ESP_LOGI(TAG, "Pairing window: open=%d target=%s remaining=%ds",
-                         ps.open, ps.target == SWITCH_TOP ? "TOP" : "BOTTOM", ps.remaining_s);
+                         ps.open, tgt, ps.remaining_s);
                 ESP_LOGI(TAG, "==========================");
             } else if (strcmp(line, "reset") == 0 || strcmp(line, "r") == 0) {
                 ESP_LOGW(TAG, "Console CMD: Resetting Zigbee network to factory default...");
@@ -61,8 +78,26 @@ static void console_rx_task(void *arg)
             } else if (strcmp(line, "top_off") == 0 || strcmp(line, "off") == 0) {
                 ESP_LOGI(TAG, "Console CMD: Turn TOP switch OFF");
                 zigbee_coord_switch_set(SWITCH_TOP, false);
+            } else if (strcmp(line, "bot_on") == 0) {
+                ESP_LOGI(TAG, "Console CMD: Turn BOTTOM switch ON");
+                zigbee_coord_switch_set(SWITCH_BOTTOM, true);
+            } else if (strcmp(line, "bot_off") == 0) {
+                ESP_LOGI(TAG, "Console CMD: Turn BOTTOM switch OFF");
+                zigbee_coord_switch_set(SWITCH_BOTTOM, false);
+            } else if (strcmp(line, "shower_on") == 0 || strcmp(line, "shower_open") == 0) {
+                ESP_LOGI(TAG, "Console CMD: Open SHOWER valve");
+                zigbee_coord_switch_set(SWITCH_SHOWER, true);
+            } else if (strcmp(line, "shower_off") == 0 || strcmp(line, "shower_close") == 0) {
+                ESP_LOGI(TAG, "Console CMD: Close SHOWER valve");
+                zigbee_coord_switch_set(SWITCH_SHOWER, false);
+            } else if (strcmp(line, "bath_on") == 0 || strcmp(line, "bath_open") == 0) {
+                ESP_LOGI(TAG, "Console CMD: Open BATH valve");
+                zigbee_coord_switch_set(SWITCH_BATH, true);
+            } else if (strcmp(line, "bath_off") == 0 || strcmp(line, "bath_close") == 0) {
+                ESP_LOGI(TAG, "Console CMD: Close BATH valve");
+                zigbee_coord_switch_set(SWITCH_BATH, false);
             } else {
-                ESP_LOGI(TAG, "Available console commands: pair, status, reset, on, off");
+                ESP_LOGI(TAG, "Available console commands: pair [top|bot|shower|bath], status, top_on, top_off, bot_on, bot_off, shower_on, shower_off, bath_on, bath_off, reset");
             }
         }
         vTaskDelay(pdMS_TO_TICKS(50));

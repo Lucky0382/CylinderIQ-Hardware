@@ -128,7 +128,7 @@ static esp_err_t handler_get_switches(httpd_req_t *req)
         return err;
     }
     // Safe fallback if C6 coordinator is offline / not yet booted:
-    const char *fallback = "{\"top\":{\"paired\":false,\"state\":\"off\"},\"bottom\":{\"paired\":false,\"state\":\"off\"},\"coordinator_online\":false}";
+    const char *fallback = "{\"top\":{\"paired\":false,\"state\":\"off\"},\"bottom\":{\"paired\":false,\"state\":\"off\"},\"shower\":{\"paired\":false,\"state\":\"off\"},\"bath\":{\"paired\":false,\"state\":\"off\"},\"coordinator_online\":false}";
     return send_json_response(req, 200, fallback);
 }
 
@@ -154,9 +154,14 @@ static esp_err_t handler_switch_top_on(httpd_req_t *req)     { return forward_sw
 static esp_err_t handler_switch_top_off(httpd_req_t *req)    { return forward_switch_request(req, "POST"); }
 static esp_err_t handler_switch_bottom_on(httpd_req_t *req)  { return forward_switch_request(req, "POST"); }
 static esp_err_t handler_switch_bottom_off(httpd_req_t *req) { return forward_switch_request(req, "POST"); }
+static esp_err_t handler_switch_shower_on(httpd_req_t *req)  { return forward_switch_request(req, "POST"); }
+static esp_err_t handler_switch_shower_off(httpd_req_t *req) { return forward_switch_request(req, "POST"); }
+static esp_err_t handler_switch_bath_on(httpd_req_t *req)    { return forward_switch_request(req, "POST"); }
+static esp_err_t handler_switch_bath_off(httpd_req_t *req)   { return forward_switch_request(req, "POST"); }
 static esp_err_t handler_switch_pair(httpd_req_t *req)       { return forward_switch_request(req, "POST"); }
 static esp_err_t handler_get_pair_state(httpd_req_t *req)    { return forward_switch_request(req, "GET");  }
 static esp_err_t handler_switch_clear(httpd_req_t *req)      { return forward_switch_request(req, "POST"); }
+static esp_err_t handler_switch_post_wildcard(httpd_req_t *req) { return forward_switch_request(req, "POST"); }
 
 // ── Web Dashboard Handlers ─────────────────────────────────────
 static esp_err_t handler_get_dashboard(httpd_req_t *req)
@@ -202,15 +207,20 @@ static const httpd_uri_t s_routes[] = {
     // CORS OPTIONS pre-flight
     { .uri = "/*",                 .method = HTTP_OPTIONS, .handler = handler_options,              .user_ctx = NULL },
 
-    // Switch control (forwarded to C6 coordinator)
+    // Switch & Valve control (forwarded to C6 coordinator)
     { .uri = "/switches",          .method = HTTP_GET,  .handler = handler_get_switches,            .user_ctx = NULL },
     { .uri = "/switch/top/on",     .method = HTTP_POST, .handler = handler_switch_top_on,           .user_ctx = NULL },
     { .uri = "/switch/top/off",    .method = HTTP_POST, .handler = handler_switch_top_off,          .user_ctx = NULL },
     { .uri = "/switch/bottom/on",  .method = HTTP_POST, .handler = handler_switch_bottom_on,        .user_ctx = NULL },
     { .uri = "/switch/bottom/off", .method = HTTP_POST, .handler = handler_switch_bottom_off,       .user_ctx = NULL },
+    { .uri = "/switch/shower/on",  .method = HTTP_POST, .handler = handler_switch_shower_on,        .user_ctx = NULL },
+    { .uri = "/switch/shower/off", .method = HTTP_POST, .handler = handler_switch_shower_off,       .user_ctx = NULL },
+    { .uri = "/switch/bath/on",    .method = HTTP_POST, .handler = handler_switch_bath_on,          .user_ctx = NULL },
+    { .uri = "/switch/bath/off",   .method = HTTP_POST, .handler = handler_switch_bath_off,         .user_ctx = NULL },
     { .uri = "/switch/pair",       .method = HTTP_POST, .handler = handler_switch_pair,             .user_ctx = NULL },
     { .uri = "/switch/pair",       .method = HTTP_GET,  .handler = handler_get_pair_state,          .user_ctx = NULL },
     { .uri = "/switch/clear",      .method = HTTP_POST, .handler = handler_switch_clear,            .user_ctx = NULL },
+    { .uri = "/switch/*",          .method = HTTP_POST, .handler = handler_switch_post_wildcard,    .user_ctx = NULL },
 
     // V1 ESPHome compatibility (wildcard)
     { .uri = "/sensor/*",          .method = HTTP_GET,  .handler = handler_sensor_v1,               .user_ctx = NULL },
@@ -249,7 +259,7 @@ void http_server_start(void)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port      = 80;
     config.max_open_sockets = 7;
-    config.max_uri_handlers = 40;
+    config.max_uri_handlers = 50;
     config.uri_match_fn     = httpd_uri_match_wildcard;
     config.stack_size       = 8192;
 

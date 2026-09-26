@@ -26,6 +26,17 @@ static cJSON *switch_to_json(switch_id_t sw)
     return obj;
 }
 
+static const char *slot_to_str(switch_id_t sw)
+{
+    switch (sw) {
+        case SWITCH_TOP:    return "top";
+        case SWITCH_BOTTOM: return "bottom";
+        case SWITCH_SHOWER: return "shower";
+        case SWITCH_BATH:   return "bath";
+        default:            return "unknown";
+    }
+}
+
 static bool parse_slot(const char *json_str, switch_id_t *out)
 {
     if (!json_str || !json_str[0]) return false;
@@ -38,6 +49,10 @@ static bool parse_slot(const char *json_str, switch_id_t *out)
             *out = SWITCH_TOP; ok = true;
         } else if (strcmp(jslot->valuestring, "bottom") == 0) {
             *out = SWITCH_BOTTOM; ok = true;
+        } else if (strcmp(jslot->valuestring, "shower") == 0) {
+            *out = SWITCH_SHOWER; ok = true;
+        } else if (strcmp(jslot->valuestring, "bath") == 0) {
+            *out = SWITCH_BATH; ok = true;
         }
     }
     cJSON_Delete(root);
@@ -58,6 +73,8 @@ void switch_control_dispatch(const char *method,
         cJSON *root = cJSON_CreateObject();
         cJSON_AddItemToObject(root, "top",    switch_to_json(SWITCH_TOP));
         cJSON_AddItemToObject(root, "bottom", switch_to_json(SWITCH_BOTTOM));
+        cJSON_AddItemToObject(root, "shower", switch_to_json(SWITCH_SHOWER));
+        cJSON_AddItemToObject(root, "bath",   switch_to_json(SWITCH_BATH));
 
         uint16_t pan_id = 0;
         uint8_t channel = 0;
@@ -112,12 +129,44 @@ void switch_control_dispatch(const char *method,
         return;
     }
 
+    // POST /switch/shower/on
+    if (strcmp(path, "/switch/shower/on") == 0 && strcmp(method, "POST") == 0) {
+        bool ok = zigbee_coord_switch_set(SWITCH_SHOWER, true);
+        *out_status = ok ? 200 : 409;
+        *out_body = strdup(ok ? "{\"ok\":true}" : "{\"error\":\"shower valve not paired\"}");
+        return;
+    }
+
+    // POST /switch/shower/off
+    if (strcmp(path, "/switch/shower/off") == 0 && strcmp(method, "POST") == 0) {
+        bool ok = zigbee_coord_switch_set(SWITCH_SHOWER, false);
+        *out_status = ok ? 200 : 409;
+        *out_body = strdup(ok ? "{\"ok\":true}" : "{\"error\":\"shower valve not paired\"}");
+        return;
+    }
+
+    // POST /switch/bath/on
+    if (strcmp(path, "/switch/bath/on") == 0 && strcmp(method, "POST") == 0) {
+        bool ok = zigbee_coord_switch_set(SWITCH_BATH, true);
+        *out_status = ok ? 200 : 409;
+        *out_body = strdup(ok ? "{\"ok\":true}" : "{\"error\":\"bath valve not paired\"}");
+        return;
+    }
+
+    // POST /switch/bath/off
+    if (strcmp(path, "/switch/bath/off") == 0 && strcmp(method, "POST") == 0) {
+        bool ok = zigbee_coord_switch_set(SWITCH_BATH, false);
+        *out_status = ok ? 200 : 409;
+        *out_body = strdup(ok ? "{\"ok\":true}" : "{\"error\":\"bath valve not paired\"}");
+        return;
+    }
+
     // POST /switch/pair
     if (strcmp(path, "/switch/pair") == 0 && strcmp(method, "POST") == 0) {
         switch_id_t slot;
         if (!parse_slot(body, &slot)) {
             *out_status = 400;
-            *out_body = strdup("{\"error\":\"slot must be top or bottom\"}");
+            *out_body = strdup("{\"error\":\"slot must be top, bottom, shower, or bath\"}");
             return;
         }
         int duration_s = 180;
@@ -135,7 +184,7 @@ void switch_control_dispatch(const char *method,
         char resp[96];
         snprintf(resp, sizeof(resp),
                  "{\"ok\":true,\"slot\":\"%s\",\"duration_s\":%d}",
-                 slot == SWITCH_TOP ? "top" : "bottom", duration_s);
+                 slot_to_str(slot), duration_s);
         *out_status = 200;
         *out_body = strdup(resp);
         return;
@@ -148,7 +197,7 @@ void switch_control_dispatch(const char *method,
         if (ps.open) {
             snprintf(resp, sizeof(resp),
                      "{\"open\":true,\"slot\":\"%s\",\"remaining_s\":%d}",
-                     ps.target == SWITCH_TOP ? "top" : "bottom",
+                     slot_to_str(ps.target),
                      ps.remaining_s);
         } else {
             snprintf(resp, sizeof(resp), "{\"open\":false,\"remaining_s\":0}");
@@ -163,7 +212,7 @@ void switch_control_dispatch(const char *method,
         switch_id_t slot;
         if (!parse_slot(body, &slot)) {
             *out_status = 400;
-            *out_body = strdup("{\"error\":\"slot must be top or bottom\"}");
+            *out_body = strdup("{\"error\":\"slot must be top, bottom, shower, or bath\"}");
             return;
         }
         zigbee_coord_clear(slot);

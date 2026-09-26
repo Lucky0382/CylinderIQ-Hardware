@@ -13,7 +13,9 @@ extern "C" {
 typedef enum {
     SWITCH_TOP    = 0,
     SWITCH_BOTTOM = 1,
-    SWITCH_COUNT  = 2,
+    SWITCH_SHOWER = 2,
+    SWITCH_BATH   = 3,
+    SWITCH_COUNT  = 4,
 } switch_id_t;
 
 typedef struct {

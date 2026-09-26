@@ -128,13 +128,13 @@ static const char s_dashboard_html[] = R"rawliteral(<!DOCTYPE html>
     </div>
   </div>
 
-  <!-- Zigbee 20A Immersion Switches Panel -->
+  <!-- Zigbee Smart Switches & Valves Panel -->
   <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-      <h2 style="margin: 0;">Zigbee 20A Smart Immersion Switches</h2>
+      <h2 style="margin: 0;">Zigbee 3.0 Smart Devices (Immersions & Valves)</h2>
       <div style="font-size: 0.85rem; color: var(--muted); display: flex; gap: 10px; align-items: center;">
         <span>Coordinator: <strong id="coord-status" style="color: var(--warning)">Checking...</strong></span>
-        <span>CH: <strong id="coord-channel">25</strong></span>
+        <span>CH: <strong id="coord-channel">11</strong></span>
         <span>PAN: <strong id="coord-pan">--</strong></span>
       </div>
     </div>
@@ -174,6 +174,44 @@ static const char s_dashboard_html[] = R"rawliteral(<!DOCTYPE html>
           <button class="btn-danger" onclick="toggleSwitch('bottom', 'off')">Turn OFF</button>
           <button class="btn-primary" onclick="startPair('bottom')">Pair Bottom</button>
           <button class="btn-secondary" onclick="clearSwitch('bottom')">Unpair</button>
+        </div>
+      </div>
+
+      <!-- ShowerIQ Motorized Valve -->
+      <div class="switch-box">
+        <div class="switch-header">
+          <div class="switch-name">🚿 ShowerIQ (Shower Outlet Valve)</div>
+          <span id="shw-paired-badge" class="status-tag status-unpaired">Unpaired</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.85rem; color: var(--muted);">Valve State:</span>
+          <span id="shw-state-badge" class="status-tag status-off">CLOSED</span>
+        </div>
+        <div style="font-size: 0.8rem; color: var(--muted);" id="shw-addr">Address: None</div>
+        <div class="btn-group">
+          <button class="btn-success" onclick="toggleSwitch('shower', 'on')">Open Valve</button>
+          <button class="btn-danger" onclick="toggleSwitch('shower', 'off')">Close Valve</button>
+          <button class="btn-primary" onclick="startPair('shower')">Pair Valve</button>
+          <button class="btn-secondary" onclick="clearSwitch('shower')">Unpair</button>
+        </div>
+      </div>
+
+      <!-- BathIQ Motorized Valve -->
+      <div class="switch-box">
+        <div class="switch-header">
+          <div class="switch-name">🛁 BathIQ (Bath Hot Tap Valve)</div>
+          <span id="bth-paired-badge" class="status-tag status-unpaired">Unpaired</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.85rem; color: var(--muted);">Valve State:</span>
+          <span id="bth-state-badge" class="status-tag status-off">CLOSED</span>
+        </div>
+        <div style="font-size: 0.8rem; color: var(--muted);" id="bth-addr">Address: None</div>
+        <div class="btn-group">
+          <button class="btn-success" onclick="toggleSwitch('bath', 'on')">Open Valve</button>
+          <button class="btn-danger" onclick="toggleSwitch('bath', 'off')">Close Valve</button>
+          <button class="btn-primary" onclick="startPair('bath')">Pair Valve</button>
+          <button class="btn-secondary" onclick="clearSwitch('bath')">Unpair</button>
         </div>
       </div>
     </div>
@@ -378,6 +416,48 @@ async function updateSwitches() {
         botState.className = 'status-tag status-off';
       }
 
+      // ShowerIQ Valve
+      const shwBadge = document.getElementById('shw-paired-badge');
+      const shwState = document.getElementById('shw-state-badge');
+      const shwAddr = document.getElementById('shw-addr');
+      if (shwBadge && data.shower) {
+        if (data.shower.paired) {
+          shwBadge.innerText = 'Paired';
+          shwBadge.className = 'status-tag status-paired';
+          if (shwAddr) shwAddr.innerText = 'Address: ' + (data.shower.addr || 'Paired');
+        } else {
+          shwBadge.innerText = 'Unpaired';
+          shwBadge.className = 'status-tag status-unpaired';
+          if (shwAddr) shwAddr.innerText = 'Address: None';
+        }
+        if (shwState) {
+          const isOpen = data.shower.state === 'on';
+          shwState.innerText = isOpen ? 'OPEN' : 'CLOSED';
+          shwState.className = 'status-tag ' + (isOpen ? 'status-on' : 'status-off');
+        }
+      }
+
+      // BathIQ Valve
+      const bthBadge = document.getElementById('bth-paired-badge');
+      const bthState = document.getElementById('bth-state-badge');
+      const bthAddr = document.getElementById('bth-addr');
+      if (bthBadge && data.bath) {
+        if (data.bath.paired) {
+          bthBadge.innerText = 'Paired';
+          bthBadge.className = 'status-tag status-paired';
+          if (bthAddr) bthAddr.innerText = 'Address: ' + (data.bath.addr || 'Paired');
+        } else {
+          bthBadge.innerText = 'Unpaired';
+          bthBadge.className = 'status-tag status-unpaired';
+          if (bthAddr) bthAddr.innerText = 'Address: None';
+        }
+        if (bthState) {
+          const isOpen = data.bath.state === 'on';
+          bthState.innerText = isOpen ? 'OPEN' : 'CLOSED';
+          bthState.className = 'status-tag ' + (isOpen ? 'status-on' : 'status-off');
+        }
+      }
+
       // Success feedback if targeted switch is confirmed paired
       const slotEl = document.getElementById('pair-slot-label');
       const activeSlot = slotEl ? (slotEl.innerText || '').toLowerCase() : '';
@@ -399,6 +479,24 @@ async function updateSwitches() {
         banner.style.color = '#ecfdf5';
         banner.innerHTML = '🎉 <strong>Pairing Success!</strong> BOTTOM switch paired cleanly! Address: <code>' + (data.bottom.addr || 'Paired') + '</code>';
         setTimeout(() => { banner.classList.remove('active'); banner.removeAttribute('style'); }, 8000);
+      } else if (activeSlot === 'shower' && data.shower && data.shower.paired && pairInterval) {
+        clearInterval(pairInterval);
+        pairInterval = null;
+        const banner = document.getElementById('pair-banner');
+        banner.style.background = '#064e3b';
+        banner.style.borderColor = '#10b981';
+        banner.style.color = '#ecfdf5';
+        banner.innerHTML = '🎉 <strong>Pairing Success!</strong> ShowerIQ valve paired cleanly! Address: <code>' + (data.shower.addr || 'Paired') + '</code>';
+        setTimeout(() => { banner.classList.remove('active'); banner.removeAttribute('style'); }, 8000);
+      } else if (activeSlot === 'bath' && data.bath && data.bath.paired && pairInterval) {
+        clearInterval(pairInterval);
+        pairInterval = null;
+        const banner = document.getElementById('pair-banner');
+        banner.style.background = '#064e3b';
+        banner.style.borderColor = '#10b981';
+        banner.style.color = '#ecfdf5';
+        banner.innerHTML = '🎉 <strong>Pairing Success!</strong> BathIQ valve paired cleanly! Address: <code>' + (data.bath.addr || 'Paired') + '</code>';
+        setTimeout(() => { banner.classList.remove('active'); banner.removeAttribute('style'); }, 8000);
       }
     }
   } catch(e) {}
@@ -411,7 +509,9 @@ function startLocalCountdown(slot, duration) {
   localRemaining = duration;
   const banner = document.getElementById('pair-banner');
   banner.removeAttribute('style');
-  banner.innerHTML = '⏳ <strong>Zigbee Pairing Active:</strong> Open network for slot <span id="pair-slot-label" style="text-transform: uppercase;">' + slot.toUpperCase() + '</span>. Put your MOES switch in pairing mode (hold button 5s until LED flashes). <strong id="pair-countdown">' + localRemaining + 's</strong> remaining.';
+  const isValve = slot === 'shower' || slot === 'bath';
+  const devType = isValve ? 'Zigbee valve' : 'MOES switch';
+  banner.innerHTML = '⏳ <strong>Zigbee Pairing Active:</strong> Open network for slot <span id="pair-slot-label" style="text-transform: uppercase;">' + slot.toUpperCase() + '</span>. Put your ' + devType + ' in pairing mode (hold button 5s until LED flashes). <strong id="pair-countdown">' + localRemaining + 's</strong> remaining.';
   banner.classList.add('active');
 
   if (pairInterval) clearInterval(pairInterval);

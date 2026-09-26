@@ -41,10 +41,21 @@ static const char *TAG = "zb_coord";
 
 // ── NVS keys ──────────────────────────────────────────────────
 #define NVS_NAMESPACE   "zb"
-static const char *NVS_IEEE_KEY[SWITCH_COUNT]   = {"top_ieee",  "bot_ieee"};
-static const char *NVS_SHORT_KEY[SWITCH_COUNT]  = {"top_short", "bot_short"};
-static const char *NVS_EP_KEY[SWITCH_COUNT]     = {"top_ep",    "bot_ep"};
-static const char *NVS_PAIRED_KEY[SWITCH_COUNT] = {"top_ok",    "bot_ok"};
+static const char *NVS_IEEE_KEY[SWITCH_COUNT]   = {"top_ieee",  "bot_ieee",  "shw_ieee",  "bth_ieee"};
+static const char *NVS_SHORT_KEY[SWITCH_COUNT]  = {"top_short", "bot_short", "shw_short", "bth_short"};
+static const char *NVS_EP_KEY[SWITCH_COUNT]     = {"top_ep",    "bot_ep",    "shw_ep",    "bth_ep"};
+static const char *NVS_PAIRED_KEY[SWITCH_COUNT] = {"top_ok",    "bot_ok",    "shw_ok",    "bth_ok"};
+
+static const char *slot_name(switch_id_t sw)
+{
+    switch (sw) {
+        case SWITCH_TOP:    return "TOP";
+        case SWITCH_BOTTOM: return "BOTTOM";
+        case SWITCH_SHOWER: return "SHOWER";
+        case SWITCH_BATH:   return "BATH";
+        default:            return "UNKNOWN";
+    }
+}
 
 // ── Runtime state (mutex-protected) ───────────────────────────
 static SemaphoreHandle_t s_state_mutex;
@@ -88,8 +99,8 @@ static void nvs_load_switch(switch_id_t sw)
         nvs_get_u8(h, NVS_EP_KEY[sw], &ep);
         s_sw[sw].endpoint = ep ? ep : 1;
         s_sw[sw].paired = true;
-        ESP_LOGI(TAG, "Switch %s loaded from NVS addr=0x%04X ep=%d",
-                 sw == SWITCH_TOP ? "TOP" : "BOTTOM", s_sw[sw].short_addr, s_sw[sw].endpoint);
+        ESP_LOGI(TAG, "Device %s loaded from NVS addr=0x%04X ep=%d",
+                 slot_name(sw), s_sw[sw].short_addr, s_sw[sw].endpoint);
     }
     nvs_close(h);
 }
@@ -141,7 +152,7 @@ static void handle_device_joined(uint16_t short_addr, const uint8_t *ieee)
                 xSemaphoreGive(s_state_mutex);
                 nvs_save_switch((switch_id_t)i);
                 ESP_LOGI(TAG, "Device 0x%04X already paired as %s (updated)",
-                         short_addr, i == 0 ? "TOP" : "BOTTOM");
+                         short_addr, slot_name((switch_id_t)i));
                 return;
             }
         }
@@ -156,8 +167,14 @@ static void handle_device_joined(uint16_t short_addr, const uint8_t *ieee)
     } else if (!s_sw[SWITCH_BOTTOM].paired) {
         slot = SWITCH_BOTTOM;
         ESP_LOGI(TAG, "Auto-assigning joining device to unpaired BOTTOM slot");
+    } else if (!s_sw[SWITCH_SHOWER].paired) {
+        slot = SWITCH_SHOWER;
+        ESP_LOGI(TAG, "Auto-assigning joining device to unpaired SHOWER slot");
+    } else if (!s_sw[SWITCH_BATH].paired) {
+        slot = SWITCH_BATH;
+        ESP_LOGI(TAG, "Auto-assigning joining device to unpaired BATH slot");
     } else {
-        ESP_LOGW(TAG, "Both slots already paired — ignoring joining device 0x%04X", short_addr);
+        ESP_LOGW(TAG, "All slots already paired — ignoring joining device 0x%04X", short_addr);
         xSemaphoreGive(s_state_mutex);
         return;
     }
@@ -175,14 +192,14 @@ static void handle_device_joined(uint16_t short_addr, const uint8_t *ieee)
     nvs_save_switch(slot);
 
     if (ieee) {
-        ESP_LOGI(TAG, "Switch %s paired — addr=0x%04X IEEE=%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
-                 slot == SWITCH_TOP ? "TOP" : "BOTTOM",
+        ESP_LOGI(TAG, "Device %s paired — addr=0x%04X IEEE=%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
+                 slot_name(slot),
                  short_addr,
                  ieee[7], ieee[6], ieee[5], ieee[4],
                  ieee[3], ieee[2], ieee[1], ieee[0]);
     } else {
-        ESP_LOGI(TAG, "Switch %s paired — addr=0x%04X",
-                 slot == SWITCH_TOP ? "TOP" : "BOTTOM", short_addr);
+        ESP_LOGI(TAG, "Device %s paired — addr=0x%04X",
+                 slot_name(slot), short_addr);
     }
 }
 
@@ -332,9 +349,17 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
                         s_pair.target = SWITCH_BOTTOM;
                         ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds — READY TO PAIR BOTTOM SWITCH",
                                  s_pan_id, dur);
-                    } else {
-                        ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds (both switches paired)",
+                    } else if (!s_sw[SWITCH_SHOWER].paired) {
+                        s_pair.target = SWITCH_SHOWER;
+                        ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds — READY TO PAIR SHOWER VALVE",
                                  s_pan_id, dur);
+                    } else if (!s_sw[SWITCH_BATH].paired) {
+                        s_pair.target = SWITCH_BATH;
+                        ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds — READY TO PAIR BATH VALVE",
+                                 s_pan_id, dur);
+                    } else {
+                        ESP_LOGI(TAG, "Zigbee network (PAN 0x%04X) is OPEN for %d seconds (target=%s)",
+                                 s_pan_id, dur, slot_name(s_pair.target));
                     }
                     if (s_pair_timer) xTimerReset(s_pair_timer, 0);
                 }
@@ -547,7 +572,7 @@ void zigbee_coord_permit_join(switch_id_t slot, uint8_t duration_s)
     if (duration_s > 0) {
         esp_err_t bdb_err = esp_zb_bdb_open_network(duration_s);
         ESP_LOGI(TAG, "Permit join open: slot=%s duration=%ds (bdb_open: %s)",
-                 slot == SWITCH_TOP ? "TOP" : "BOTTOM", duration_s, esp_err_to_name(bdb_err));
+                 slot_name(slot), duration_s, esp_err_to_name(bdb_err));
 
         // Standard Zigbee 3.0 / Tuya Trust Center permit-joining broadcast to all routers and coordinator (0xFFFC)
         esp_zb_zdo_permit_joining_req_param_t req_param = {};
@@ -558,7 +583,7 @@ void zigbee_coord_permit_join(switch_id_t slot, uint8_t duration_s)
     } else {
         esp_err_t bdb_err = esp_zb_bdb_close_network();
         ESP_LOGI(TAG, "Permit join closed: slot=%s (bdb_close: %s)",
-                 slot == SWITCH_TOP ? "TOP" : "BOTTOM", esp_err_to_name(bdb_err));
+                 slot_name(slot), esp_err_to_name(bdb_err));
 
         esp_zb_zdo_permit_joining_req_param_t req_param = {};
         req_param.dst_nwk_addr    = 0xFFFC;
@@ -578,7 +603,7 @@ bool zigbee_coord_switch_set(switch_id_t sw, bool on)
     xSemaphoreGive(s_state_mutex);
 
     if (!paired) {
-        ESP_LOGW(TAG, "Switch %d not paired — cannot send command", sw);
+        ESP_LOGW(TAG, "Device %s not paired — cannot send command", slot_name(sw));
         return false;
     }
 
@@ -600,7 +625,7 @@ bool zigbee_coord_switch_set(switch_id_t sw, bool on)
         xSemaphoreTake(s_state_mutex, portMAX_DELAY);
         s_sw[sw].on = on;
         xSemaphoreGive(s_state_mutex);
-        ESP_LOGI(TAG, "Switch %s → %s (tsn=%u)", sw == SWITCH_TOP ? "TOP" : "BOTTOM",
+        ESP_LOGI(TAG, "Device %s → %s (tsn=%u)", slot_name(sw),
                  on ? "ON" : "OFF", tsn);
         return true;
     }
@@ -631,7 +656,7 @@ void zigbee_coord_clear(switch_id_t sw)
     memset(&s_sw[sw], 0, sizeof(zb_switch_t));
     xSemaphoreGive(s_state_mutex);
     nvs_clear_switch(sw);
-    ESP_LOGI(TAG, "Switch %s cleared", sw == SWITCH_TOP ? "TOP" : "BOTTOM");
+    ESP_LOGI(TAG, "Device %s cleared", slot_name(sw));
 }
 
 void zigbee_coord_get_network_info(uint16_t *pan_id, uint8_t *channel, bool *online)
@@ -645,9 +670,10 @@ void zigbee_coord_get_network_info(uint16_t *pan_id, uint8_t *channel, bool *onl
 
 void zigbee_coord_reset_network(void)
 {
-    ESP_LOGI(TAG, "Resetting Zigbee network and clearing all paired switches...");
-    zigbee_coord_clear(SWITCH_TOP);
-    zigbee_coord_clear(SWITCH_BOTTOM);
+    ESP_LOGI(TAG, "Resetting Zigbee network and clearing all paired devices...");
+    for (int i = 0; i < SWITCH_COUNT; i++) {
+        zigbee_coord_clear((switch_id_t)i);
+    }
     nvs_flash_erase_partition("zigbee");
     esp_zb_lock_acquire(portMAX_DELAY);
     esp_zb_bdb_reset_via_local_action();
