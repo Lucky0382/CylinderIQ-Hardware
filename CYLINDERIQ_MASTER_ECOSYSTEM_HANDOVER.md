@@ -17,7 +17,7 @@
    - 2.4 [Grid Assist (GA) — VPP & Curtailment Monetization Engine](#24-grid-assist-ga--vpp--curtailment-monetization-engine)
    - 2.5 [ImmersionOS / IQOS (IQ) — Operating Core](#25-immersionos--iqos-iq--operating-core)
    - 2.6 [TapIQ (TIQ) — Inline Smart Flow Control](#26-tapiq-tiq--inline-smart-flow-control)
-   - 2.7 [DisplayIQ (DIQ) — Touchscreen Check-In Appliance](#27-displayiq-diq--touchscreen-check-in-appliance)
+   - 2.7 [ImmersionOS (DIQ) — Touchscreen Check-In Appliance](#27-immersionos-diq--touchscreen-check-in-appliance)
 3. [Dual-MCU Hardware & Firmware Engineering](#3-dual-mcu-hardware--firmware-engineering)
    - 3.1 [Architectural Evolution: Why Single-MCU Failed & Dual-MCU Succeeded](#31-architectural-evolution-why-single-mcu-failed--dual-mcu-succeeded)
    - 3.2 [ESP32-S3: System Master & Networking](#32-esp32-s3-system-master--networking)
@@ -27,7 +27,7 @@
    - 3.6 [NVS Memory Management & Root-Cause Resolution of Flash Faults](#36-nvs-memory-management--root-cause-resolution-of-flash-faults)
 4. [Software Ecosystem: Applications & User Interfaces](#4-software-ecosystem-applications--user-interfaces)
    - 4.1 [Embedded On-Chip Web Dashboard (ESP32-S3 HTTP)](#41-embedded-on-chip-web-dashboard-esp32-s3-http)
-   - 4.2 [Android Application (DisplayIQ Kiosk & IQOS Mobile)](#42-android-application-displayiq-kiosk--iqos-mobile)
+   - 4.2 [Android Application (ImmersionOS Kiosk & IQOS Mobile)](#42-android-application-immersionos-kiosk--iqos-mobile)
    - 4.3 [Cloud Web Platform & Home Assistant Integration](#43-cloud-web-platform--home-assistant-integration)
 5. [The Green Energy Group (GEG) Cyprus Application & Commercial Strategy](#5-the-green-energy-group-geg-cyprus-application--commercial-strategy)
    - 5.1 [Domain & Problem Context: Isolated Grids & High-PV Curtailment](#51-domain--problem-context-isolated-grids--high-pv-curtailment)
@@ -107,7 +107,7 @@ The CylinderIQ ecosystem comprises 7 tightly coupled hardware, firmware, and sof
 │ 1. CylinderIQ (CIQ)          │ 5. ImmersionOS (IQOS)        │ 3. Safety Assist (SA)    │
 │    Dual-MCU Sensor Hub       │    Edge & App Core OS        │    B2B Asset SaaS        │
 ├──────────────────────────────┼──────────────────────────────┼──────────────────────────┤
-│ 2. ImmersionIQ (IIQ)         │ 7. DisplayIQ (DIQ)           │ 4. Grid Assist (GA)      │
+│ 2. ImmersionIQ (IIQ)         │ 7. ImmersionOS (DIQ)           │ 4. Grid Assist (GA)      │
 │    Integrated 5" Controller  │    Touchscreen Kiosk & App   │    VPP & DERMS Engine    │
 ├──────────────────────────────┴──────────────────────────────┴──────────────────────────┤
 │ 6. TapIQ (TIQ) — Inline Smart Ultrasonic/Turbine Valve for Point-of-Use Flow Control  │
@@ -128,7 +128,7 @@ The CylinderIQ ecosystem comprises 7 tightly coupled hardware, firmware, and sof
 ### 2.2 ImmersionIQ (IIQ) — Smart Wall Controller
 - **Evolutionary Step:** Second-generation commercial hardware consolidating the CIQ hub and heavy-duty switching into a single, wall-mounted unit replacing traditional mechanical immersion timers (e.g., Horstmann / Santon).
 - **Power Rating:** Dual mains supplies (110V–240V AC, 50/60Hz), driving two internal 20A / 25A high-inrush Omron/Panasonic relays rated for continuous 3kW inductive/resistive loads.
-- **Interface:** Integrated 5.0" IPS full-colour capacitive touchscreen running a tailored build of **DisplayIQ / ImmersionOS**.
+- **Interface:** Integrated 5.0" IPS full-colour capacitive touchscreen running a tailored build of **ImmersionOS / ImmersionOS**.
 - **Internal Metering:** Dual bidirectional energy metering ICs (ADE7953 / BL0942) tracking true RMS voltage, current, active power (W), power factor, and total accumulated energy (kWh) with $\pm 1\%$ accuracy.
 
 ### 2.3 Safety Assist (SA) — Asset Protection SaaS
@@ -148,7 +148,7 @@ The CylinderIQ ecosystem comprises 7 tightly coupled hardware, firmware, and sof
 - **Edge Core:** High-performance C++20 FreeRTOS firmware running on the ESP32-S3. Executes 1-second thermal stratification models, PID relay scheduling, safety state machines, and non-volatile parameter persistence.
 - **Application Layer:** Unified UI code and design system compiled across:
   - ESP32-S3 On-Chip HTML5 Dashboard (`web_dashboard.cpp`).
-  - Android DisplayIQ Touchscreen Kiosk (Jetpack Compose / Capacitor).
+  - Android ImmersionOS Touchscreen Kiosk (Jetpack Compose / Capacitor).
   - Mobile iOS/Android Resident Apps.
   - Home Assistant Core Integration (Native YAML & REST sensors).
 
@@ -157,7 +157,7 @@ The CylinderIQ ecosystem comprises 7 tightly coupled hardware, firmware, and sof
 - **Wireless Connectivity:** Zigbee 3.0 Green Power / End Device profile paired directly to the CylinderIQ coordinator.
 - **Functionality:** Point-of-use flow measurement, shower duration limiting, remote holiday shut-off, and instantaneous automatic emergency freeze/burst cut-off.
 
-### 2.7 DisplayIQ (DIQ) — Touchscreen Check-In Appliance
+### 2.7 ImmersionOS (DIQ) — Touchscreen Check-In Appliance
 - **Hardware Profile:** 3.5" or 5.0" on-wall touchscreen appliance installed in kitchens or utility hallways.
 - **Resident Experience:** "Check-in" button allowing tenants to see usable showers remaining (e.g., "3 Showers Ready"), current water temperature, cost of today's heating, and a one-touch "+30 Min Boost" button.
 
@@ -306,9 +306,9 @@ During continuous testing, the C6 coordinator previously experienced silent rese
   - Manual Top & Bottom 3kW Relay Overrides.
   - Home Assistant Auto-Discovery Exporter (`GET /ha/yaml`).
 
-### 4.2 Android Application (DisplayIQ Kiosk & IQOS Mobile)
+### 4.2 Android Application (ImmersionOS Kiosk & IQOS Mobile)
 - **Deployment Targets:**
-  - **DisplayIQ Appliance:** Dedicated 3.5" or 5.0" on-wall wallpad running Android in Kiosk (Device Owner) mode.
+  - **ImmersionOS Appliance:** Dedicated 3.5" or 5.0" on-wall wallpad running Android in Kiosk (Device Owner) mode.
   - **IQOS Resident App:** Distributed via Google Play Store for tenant smartphone control.
 - **Visual Design System:**
   - **Stratified Water Cylinder Graphic:** Visual rendering of thermal layers. Hot water (red/orange) floats above colder replacement water (blue/cyan) with dynamic particle convection animations active during heating cycles.

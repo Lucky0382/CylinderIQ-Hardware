@@ -31,7 +31,7 @@ extern "C" {
 //   POST /learn/start
 //   POST /learn/stop
 //
-// V1 compatibility (DisplayIQ V2 ESPHome polling style):
+// V1 compatibility (ImmersionOS V2 ESPHome polling style):
 //   GET  /sensor/Hot%20Outlet             → {"value":62.5,"state":"62.5"}
 //   GET  /sensor/Cylinder%20Inlet
 //   GET  /sensor/Mains%20Supply

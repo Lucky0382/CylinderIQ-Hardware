@@ -1,7 +1,7 @@
-# Handover: Android UI/UX Agent — CylinderIQ / DisplayIQ & IQOS
+# Handover: Android UI/UX Agent — CylinderIQ / ImmersionOS & IQOS
 
 **Target Agent:** Android UI/UX Engineer / Native & Capacitor App Specialist  
-**Project:** CylinderIQ DisplayIQ (DIQ) & IQOS Native Application  
+**Project:** CylinderIQ ImmersionOS (DIQ) & IQOS Native Application  
 **Context:** Green Energy Group (GEG) Cyprus Renewable Curtailment Monetization Pilot  
 
 ---
@@ -56,7 +56,7 @@ graph TD
     LR -->|"Analog/Digital (GPIO 5)"| S3
 
     subgraph "Clients"
-        DIQ["DisplayIQ / IQOS Android App
+        DIQ["ImmersionOS / IQOS Android App
 (On-wall tablet or mobile)"]
         WEB["Hub Web Dashboard
 (Browser @ 192.168.4.1)"]
@@ -73,7 +73,7 @@ graph TD
 ## 3. Android App Requirements & Functional Modules
 
 The Android app targets two deployment forms:
-1. **DisplayIQ (DIQ):** Dedicated 3.5" or 5" on-wall touchscreen appliance (kiosk mode).
+1. **ImmersionOS (DIQ):** Dedicated 3.5" or 5" on-wall touchscreen appliance (kiosk mode).
 2. **IQOS Mobile:** Resident and installer mobile application.
 
 ### Key Functional Modules
@@ -164,9 +164,9 @@ The Android app targets two deployment forms:
 
 1. **Existing Next.js + Tailwind + Capacitor Android Project:**
    - Root Folder: `C:\Users\AAEin\Documents\cylinderiq-dashboard`
-   - Core UI & Animation Component: `C:\Users\AAEin\Documents\cylinderiq-dashboard\components\DisplayIqUi.tsx` (Contains the 3D cylinder canvas animation, particle convection effects, WebSocket telemetry sync, and VPP controls).
+   - Core UI & Animation Component: `C:\Users\AAEin\Documents\cylinderiq-dashboard\components\ImmersionOsUi.tsx` (Contains the 3D cylinder canvas animation, particle convection effects, WebSocket telemetry sync, and VPP controls).
    - Generated Android Project: `C:\Users\AAEin\Documents\cylinderiq-dashboard\android`
-   - Pre-built APK: `C:\Users\AAEin\Documents\CylinderIQ-DisplayIQ.apk`
+   - Pre-built APK: `C:\Users\AAEin\Documents\CylinderIQ-ImmersionOS.apk`
 2. **Master Project Context & GEG Accelerator Q&A:**
    - `C:\Users\AAEin\Documents\cylinderiq-hub-v2\CYLINDERIQ_PROJECT_SUMMARY_AND_GREENSYN_APP.md`
 3. **HTML Reference Prototype:**

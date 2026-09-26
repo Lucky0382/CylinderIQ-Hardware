@@ -128,7 +128,7 @@ static void profile_key(char *buf, int pid, const char *suffix)
     snprintf(buf, 16, "p%d_%s", pid, suffix);
 }
 
-// Default preset values matching DisplayIQ profile 0 defaults
+// Default preset values matching ImmersionOS profile 0 defaults
 static float preset_default(int pid, const char *name)
 {
     // Profile 0 defaults

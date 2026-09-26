@@ -1,6 +1,6 @@
 // CylinderIQ Hub V2 — api_handlers.cpp (ESP32-S3)
 // All REST endpoint logic. Reads sensors/NVS, returns allocated JSON strings.
-// V1 /sensor/Name endpoints provided for DisplayIQ V2 ESPHome compatibility.
+// V1 /sensor/Name endpoints provided for ImmersionOS V2 ESPHome compatibility.
 
 #include "api_handlers.h"
 #include "calculations.h"
@@ -58,17 +58,17 @@ static void url_decode(char *dst, const char *src, size_t dst_len)
 static cJSON *build_sensors_json(const calc_result_t *r)
 {
     cJSON *s = cJSON_CreateObject();
-    cJSON_AddNumberToObject(s, "hot_outlet",        r->hot_outlet);
-    cJSON_AddNumberToObject(s, "cylinder_inlet",    r->cylinder_inlet);
-    cJSON_AddNumberToObject(s, "mains_supply",      r->mains_supply);
-    cJSON_AddNumberToObject(s, "tundish",           r->tundish);
+    cJSON_AddNumberToObject(s, "hot_outlet",        roundf(r->hot_outlet * 10.0f) / 10.0f);
+    cJSON_AddNumberToObject(s, "cylinder_inlet",    roundf(r->cylinder_inlet * 10.0f) / 10.0f);
+    cJSON_AddNumberToObject(s, "mains_supply",      roundf(r->mains_supply * 10.0f) / 10.0f);
+    cJSON_AddNumberToObject(s, "tundish",           roundf(r->tundish * 10.0f) / 10.0f);
     cJSON_AddBoolToObject(  s, "leak_wet",          r->leak_wet);
-    cJSON_AddNumberToObject(s, "usable_hot_litres", r->usable_litres);
-    cJSON_AddNumberToObject(s, "hot_water_pct",     r->hot_pct);
-    cJSON_AddNumberToObject(s, "showers_remaining", r->showers_remaining);
-    cJSON_AddNumberToObject(s, "baths_remaining",   r->baths_remaining);
-    cJSON_AddNumberToObject(s, "recovery_min",      r->recovery_min);
-    cJSON_AddNumberToObject(s, "cost_pence",        r->cost_pence);
+    cJSON_AddNumberToObject(s, "usable_hot_litres", roundf(r->usable_litres * 10.0f) / 10.0f);
+    cJSON_AddNumberToObject(s, "hot_water_pct",     roundf(r->hot_pct));
+    cJSON_AddNumberToObject(s, "showers_remaining", roundf(r->showers_remaining * 10.0f) / 10.0f);
+    cJSON_AddNumberToObject(s, "baths_remaining",   roundf(r->baths_remaining * 10.0f) / 10.0f);
+    cJSON_AddNumberToObject(s, "recovery_min",      roundf(r->recovery_min));
+    cJSON_AddNumberToObject(s, "cost_pence",        roundf(r->cost_pence * 10.0f) / 10.0f);
     return s;
 }
 

@@ -94,7 +94,7 @@ The UI must display RF health indicators:
 2. **Enterprise UI Architecture Template (726 lines of CSS, layout, SVG gauges, and animations):**
    - `C:\Users\AAEin\Documents\cylinderiq-hub-v2\display_iq_dashboard.html`
 3. **React / Next.js Implementation:**
-   - `C:\Users\AAEin\Documents\cylinderiq-dashboard\components\DisplayIqUi.tsx`
+   - `C:\Users\AAEin\Documents\cylinderiq-dashboard\components\ImmersionOsUi.tsx`
 4. **Firmware HTTP Endpoint Implementation & Dispatches:**
    - `C:\Users\AAEin\Documents\cylinderiq-hub-v2\src\http_server.cpp`
    - `C:\Users\AAEin\Documents\cylinderiq-hub-v2\src\api_handlers.cpp`

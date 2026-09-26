@@ -10,6 +10,9 @@
 
 #include "ble_server.h"
 #include "api_handlers.h"
+#include "uart_bridge.h"
+#include "nvs_store.h"
+#include "calculations.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -145,6 +148,106 @@ static void handle_ble_command(const char *json_in, char **resp_out)
     } else if (strcmp(cmd, "learn_stop") == 0) {
         strncpy(path, "/learn/stop", sizeof(path));
 
+    } else if (strcmp(cmd, "ping") == 0) {
+        cJSON_Delete(body);
+        cJSON_Delete(msg);
+        *resp_out = strdup("{\"ok\":true,\"cmd\":\"ping\",\"pong\":true}");
+        return;
+
+    } else if (strcmp(cmd, "get_sensors") == 0 || strcmp(cmd, "sensors") == 0) {
+        strncpy(path, "/sensors", sizeof(path));
+        method = "GET";
+
+    } else if (strcmp(cmd, "switch") == 0) {
+        cJSON *jslot  = cJSON_GetObjectItem(msg, "slot");
+        cJSON *jstate = cJSON_GetObjectItem(msg, "state");
+        const char *slot  = cJSON_IsString(jslot)  ? jslot->valuestring  : "top";
+        const char *state = cJSON_IsString(jstate) ? jstate->valuestring : "off";
+        snprintf(path, sizeof(path), "/switch/%s/%s", slot, state);
+        cJSON_Delete(body);
+        cJSON_Delete(msg);
+        char *resp_c6 = NULL;
+        int status_c6 = 503;
+        bool ok = uart_bridge_request_c6("POST", path, "", &status_c6, &resp_c6);
+        if (ok && resp_c6) {
+            cJSON *c6_obj = cJSON_Parse(resp_c6);
+            if (c6_obj) {
+                cJSON_AddStringToObject(c6_obj, "cmd", "switch");
+                cJSON_AddStringToObject(c6_obj, "slot", slot);
+                cJSON_AddStringToObject(c6_obj, "state", state);
+                *resp_out = cJSON_PrintUnformatted(c6_obj);
+                cJSON_Delete(c6_obj);
+                free(resp_c6);
+            } else {
+                *resp_out = resp_c6;
+            }
+        } else {
+            *resp_out = strdup("{\"ok\":false,\"err\":\"c6_timeout\",\"cmd\":\"switch\"}");
+        }
+        return;
+
+    } else if (strcmp(cmd, "switch_pair") == 0) {
+        cJSON *jslot = cJSON_GetObjectItem(msg, "slot");
+        const char *slot = cJSON_IsString(jslot) ? jslot->valuestring : "top";
+        char req_body[64];
+        snprintf(req_body, sizeof(req_body), "{\"slot\":\"%s\",\"duration\":180}", slot);
+        cJSON_Delete(body);
+        cJSON_Delete(msg);
+        char *resp_c6 = NULL;
+        int status_c6 = 503;
+        bool ok = uart_bridge_request_c6("POST", "/switch/pair", req_body, &status_c6, &resp_c6);
+        if (ok && resp_c6) {
+            *resp_out = resp_c6;
+        } else {
+            *resp_out = strdup("{\"ok\":false,\"err\":\"c6_timeout\",\"cmd\":\"switch_pair\"}");
+        }
+        return;
+
+    } else if (strcmp(cmd, "switch_clear") == 0) {
+        cJSON *jslot = cJSON_GetObjectItem(msg, "slot");
+        const char *slot = cJSON_IsString(jslot) ? jslot->valuestring : "top";
+        char req_body[64];
+        snprintf(req_body, sizeof(req_body), "{\"slot\":\"%s\"}", slot);
+        cJSON_Delete(body);
+        cJSON_Delete(msg);
+        char *resp_c6 = NULL;
+        int status_c6 = 503;
+        bool ok = uart_bridge_request_c6("POST", "/switch/clear", req_body, &status_c6, &resp_c6);
+        if (ok && resp_c6) {
+            *resp_out = resp_c6;
+        } else {
+            *resp_out = strdup("{\"ok\":false,\"err\":\"c6_timeout\",\"cmd\":\"switch_clear\"}");
+        }
+        return;
+
+    } else if (strcmp(cmd, "switches") == 0 || strcmp(cmd, "get_switches") == 0) {
+        cJSON_Delete(body);
+        cJSON_Delete(msg);
+        char *resp_c6 = NULL;
+        int status_c6 = 503;
+        bool ok = uart_bridge_request_c6("GET", "/switches", "", &status_c6, &resp_c6);
+        if (ok && resp_c6) {
+            *resp_out = resp_c6;
+        } else {
+            *resp_out = strdup("{\"ok\":false,\"err\":\"c6_offline\",\"cmd\":\"switches\"}");
+        }
+        return;
+
+    } else if (strcmp(cmd, "tank_size") == 0 || strcmp(cmd, "set_tank_size") == 0) {
+        cJSON *jsize = cJSON_GetObjectItem(msg, "size");
+        if (cJSON_IsNumber(jsize)) {
+            int32_t sz = (int32_t)jsize->valuedouble;
+            if (sz >= 40 && sz <= 1000) {
+                nvs_set_tank_size(sz);
+                calc_run();
+                ESP_LOGI(TAG, "BLE set tank_size to %d L", (int)sz);
+            }
+        }
+        cJSON_Delete(body);
+        cJSON_Delete(msg);
+        *resp_out = strdup("{\"ok\":true,\"cmd\":\"tank_size\"}");
+        return;
+
     } else {
         cJSON_Delete(body);
         cJSON_Delete(msg);
@@ -184,7 +287,16 @@ static void handle_ble_command(const char *json_in, char **resp_out)
 static int sensor_chr_access_cb(uint16_t conn_hdl, uint16_t attr_hdl,
                                   struct ble_gatt_access_ctxt *ctxt, void *arg)
 {
-    // Notify-only — no read data
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+        char *body = NULL;
+        int status = 200;
+        api_dispatch("GET", "/sensors", "", &body, &status);
+        if (body) {
+            int rc = os_mbuf_append(ctxt->om, body, strlen(body));
+            free(body);
+            return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+        }
+    }
     return 0;
 }
 
@@ -239,11 +351,11 @@ static const struct ble_gatt_svc_def s_gatt_svcs[] = {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
         .uuid = &s_svc_uuid.u,
         .characteristics = (struct ble_gatt_chr_def[]) {
-            // Sensor Notify — S3 pushes sensor JSON every 5s
+            // Sensor Notify & Read — S3 pushes sensor JSON every 5s or on read
             {
                 .uuid       = &s_sensor_uuid.u,
                 .access_cb  = sensor_chr_access_cb,
-                .flags      = BLE_GATT_CHR_F_NOTIFY,
+                .flags      = BLE_GATT_CHR_F_NOTIFY | BLE_GATT_CHR_F_READ,
                 .val_handle = &s_sensor_val_handle,
             },
             // Command Write — App sends wizard/config/calibration commands

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DisplayIQ 10x Enterprise UI</title>
+  <title>ImmersionOS 10x Enterprise UI</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -447,7 +447,7 @@
   <header class="header-bar">
     <div class="logo-group">
       <div class="logo-icon">🔥</div>
-      <div class="logo-text">DisplayIQ</div>
+      <div class="logo-text">ImmersionOS</div>
     </div>
 
     <div class="vpp-status-pill">
@@ -586,13 +586,13 @@
     let msgId = 1;
     let allSensors = [];
 
-    const savedHost = localStorage.getItem('displayiq_ha_host') || '192.168.0.33:8123';
-    const savedToken = localStorage.getItem('displayiq_ha_token') || '';
+    const savedHost = localStorage.getItem('immersionos_ha_host') || '192.168.0.33:8123';
+    const savedToken = localStorage.getItem('immersionos_ha_token') || '';
 
-    let entityHot = localStorage.getItem('displayiq_entity_hot') || '';
-    let entityCold = localStorage.getItem('displayiq_entity_cold') || '';
-    let entityNrv = localStorage.getItem('displayiq_entity_nrv') || '';
-    let entityTundish = localStorage.getItem('displayiq_entity_tundish') || '';
+    let entityHot = localStorage.getItem('immersionos_entity_hot') || '';
+    let entityCold = localStorage.getItem('immersionos_entity_cold') || '';
+    let entityNrv = localStorage.getItem('immersionos_entity_nrv') || '';
+    let entityTundish = localStorage.getItem('immersionos_entity_tundish') || '';
 
     if (!savedToken) openConfig();
     else connectWS(savedHost, savedToken);
@@ -606,11 +606,11 @@
       entityNrv = document.getElementById('selNrv').value;
       entityTundish = document.getElementById('selTundish').value;
 
-      localStorage.setItem('displayiq_ha_token', token);
-      localStorage.setItem('displayiq_entity_hot', entityHot);
-      localStorage.setItem('displayiq_entity_cold', entityCold);
-      localStorage.setItem('displayiq_entity_nrv', entityNrv);
-      localStorage.setItem('displayiq_entity_tundish', entityTundish);
+      localStorage.setItem('immersionos_ha_token', token);
+      localStorage.setItem('immersionos_entity_hot', entityHot);
+      localStorage.setItem('immersionos_entity_cold', entityCold);
+      localStorage.setItem('immersionos_entity_nrv', entityNrv);
+      localStorage.setItem('immersionos_entity_tundish', entityTundish);
 
       document.getElementById('configModal').style.display = 'none';
       connectWS(savedHost, token);
@@ -639,7 +639,7 @@
     function populateDropdowns() {
       ['selHot', 'selCold', 'selNrv', 'selTundish'].forEach(id => {
         const sel = document.getElementById(id);
-        const cur = localStorage.getItem(`displayiq_entity_${id.replace('sel', '').toLowerCase()}`);
+        const cur = localStorage.getItem(`immersionos_entity_${id.replace('sel', '').toLowerCase()}`);
         sel.innerHTML = '<option value="">-- Select Sensor --</option>';
         allSensors.forEach(s => {
           const name = s.attributes.friendly_name ? `${s.attributes.friendly_name} (${s.entity_id})` : s.entity_id;

@@ -84,12 +84,12 @@ void calc_run(void)
     }
 
     // ── Usable hot water ──────────────────────────────────────
-    // usable_ratio = (T_hot - T_mains_ref) / (baseline_hot - baseline_cold)
-    // Uses s_mains_ref (stable pre-draw snapshot) not live mains_supply.
+    // Water below 40.0°C is lukewarm / unusable for showers and domestic hot water.
     float ratio = 0.0f;
-    float denom = bl_hot - bl_cold;
-    if (denom > 0.5f) {   // guard against degenerate calibration
-        ratio = (s.hot_outlet - s_mains_ref) / denom;
+    float denom = bl_hot - 40.0f;
+    if (denom < 5.0f) denom = 20.0f; // guard against degenerate calibration
+    if (s.hot_outlet >= 40.0f) {
+        ratio = (s.hot_outlet - 40.0f) / denom;
     }
     // Clamp 0..1
     if (ratio < 0.0f) ratio = 0.0f;
