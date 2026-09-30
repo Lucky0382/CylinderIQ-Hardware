@@ -23,8 +23,16 @@ typedef struct {
     float mains_supply;
     float tundish;           // PRV discharge pipe temperature
 
-    // Safety
+    // Safety & Alerts
     bool  leak_wet;          // true = leak rope detected moisture
+    bool  leak_alert;        // latched leak alert
+    bool  tundish_alert;     // latched PRV / rate-of-rise thermal surge alert
+    float tundish_surge_delta; // delta T recorded during surge (e.g. 5.4C)
+
+    // Draw / Flow state
+    bool  flow_active;       // true during draw or PRV drop
+    float flow_rate_lpm;     // L/min (default 9.0)
+    float snapshot_usable;   // snapshot taken at draw/drop trigger
 
     // Derived
     float usable_litres;     // litres of usable hot water now
@@ -43,6 +51,9 @@ void calc_run(void);
 
 // Thread-safe snapshot of the last computed result.
 calc_result_t calc_get(void);
+
+// Reset / silence latched alerts and stop active flow simulation
+void calc_reset_alerts(void);
 
 #ifdef __cplusplus
 }

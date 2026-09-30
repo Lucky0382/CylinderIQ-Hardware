@@ -38,7 +38,9 @@ static void ble_push_task(void *arg)
     (void)arg;
     ESP_LOGI(TAG, "BLE push task started");
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(5000));
+        calc_result_t cr = calc_get();
+        int interval_ms = (cr.flow_active || cr.tundish_alert || cr.leak_alert) ? 1000 : 5000;
+        vTaskDelay(pdMS_TO_TICKS(interval_ms));
         char *body  = NULL;
         int   status = 200;
         api_dispatch("GET", "/sensors", "", &body, &status);

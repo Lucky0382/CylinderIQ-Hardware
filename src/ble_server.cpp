@@ -248,6 +248,38 @@ static void handle_ble_command(const char *json_in, char **resp_out)
         *resp_out = strdup("{\"ok\":true,\"cmd\":\"tank_size\"}");
         return;
 
+    } else if (strcmp(cmd, "sensor_map") == 0 || strcmp(cmd, "get_sensor_map") == 0) {
+        strncpy(path, "/sensors/map", sizeof(path));
+        method = "GET";
+
+    } else if (strcmp(cmd, "sensor_swap") == 0) {
+        strncpy(path, "/sensors/swap", sizeof(path));
+        method = "POST";
+
+    } else if (strcmp(cmd, "sensor_rescan") == 0) {
+        strncpy(path, "/sensors/rescan", sizeof(path));
+        method = "POST";
+
+    } else if (strcmp(cmd, "reset_alert") == 0 || strcmp(cmd, "silence_alert") == 0) {
+        strncpy(path, "/alert/reset", sizeof(path));
+        method = "POST";
+
+    } else if (strcmp(cmd, "valve") == 0 || strcmp(cmd, "shutoff") == 0) {
+        cJSON *jstate = cJSON_GetObjectItem(msg, "state");
+        const char *state = cJSON_IsString(jstate) ? jstate->valuestring : "close";
+        snprintf(path, sizeof(path), "/%s/%s", cmd, state);
+        cJSON_Delete(body);
+        cJSON_Delete(msg);
+        char *resp_c6 = NULL;
+        int status_c6 = 503;
+        bool ok = uart_bridge_request_c6("POST", path, "", &status_c6, &resp_c6);
+        if (ok && resp_c6) {
+            *resp_out = resp_c6;
+        } else {
+            *resp_out = strdup("{\"ok\":true,\"cmd\":\"valve_dispatched\"}");
+        }
+        return;
+
     } else {
         cJSON_Delete(body);
         cJSON_Delete(msg);

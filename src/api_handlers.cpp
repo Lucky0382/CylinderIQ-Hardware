@@ -64,6 +64,12 @@ static cJSON *build_sensors_json(const calc_result_t *r)
     cJSON_AddNumberToObject(s, "mains_supply",      roundf(r->mains_supply * 10.0f) / 10.0f);
     cJSON_AddNumberToObject(s, "tundish",           roundf(r->tundish * 10.0f) / 10.0f);
     cJSON_AddBoolToObject(  s, "leak_wet",          r->leak_wet);
+    cJSON_AddBoolToObject(  s, "leak_alert",        r->leak_alert);
+    cJSON_AddBoolToObject(  s, "tundish_alert",     r->tundish_alert);
+    cJSON_AddNumberToObject(s, "tundish_surge_delta", roundf(r->tundish_surge_delta * 10.0f) / 10.0f);
+    cJSON_AddBoolToObject(  s, "flow_active",       r->flow_active);
+    cJSON_AddNumberToObject(s, "flow_rate",         roundf(r->flow_rate_lpm * 10.0f) / 10.0f);
+    cJSON_AddNumberToObject(s, "snapshot_usable",   roundf(r->snapshot_usable * 10.0f) / 10.0f);
     cJSON_AddNumberToObject(s, "usable_hot_litres", roundf(r->usable_litres * 10.0f) / 10.0f);
     cJSON_AddNumberToObject(s, "hot_water_pct",     roundf(r->hot_pct));
     cJSON_AddNumberToObject(s, "showers_remaining", roundf(r->showers_remaining * 10.0f) / 10.0f);
@@ -553,6 +559,13 @@ void api_dispatch(const char *method,
 
     if ((strcmp(path, "/sensors/gpio") == 0 || strcmp(path, "/api/sensor_gpio") == 0) && strcmp(method, "POST") == 0) {
         *resp_body = handle_post_sensor_gpio(body, resp_status);
+        return;
+    }
+
+    if ((strcmp(path, "/alert/reset") == 0 || strcmp(path, "/alert/silence") == 0 ||
+         strcmp(path, "/api/alert_reset") == 0) && strcmp(method, "POST") == 0) {
+        calc_reset_alerts();
+        *resp_body = strdup("{\"ok\":true,\"message\":\"alerts_reset\"}");
         return;
     }
 

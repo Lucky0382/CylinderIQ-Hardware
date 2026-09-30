@@ -503,11 +503,11 @@ static bool auto_map_by_temperature(uint8_t disc_roms[][8], int disc_count)
     }
 
     // ── 4. Assign roles ─────────────────────────────────────
-    // Descending order: hot_outlet, tundish, cylinder_inlet, mains_supply
+    // Descending order: hot_outlet (hottest), cylinder_inlet (2nd), tundish (ambient ~20C), mains_supply (coldest)
     const int role_order[SENSOR_COUNT] = {
         SENSOR_IDX_HOT_OUTLET,      // Hottest
-        SENSOR_IDX_TUNDISH,         // 2nd (warm ambient ~20-25°C)
-        SENSOR_IDX_CYLINDER_INLET,  // 3rd (slightly warmed by cylinder)
+        SENSOR_IDX_CYLINDER_INLET,  // 2nd (warmed by cylinder conduction)
+        SENSOR_IDX_TUNDISH,         // 3rd (ambient discharge pipe ~20-22°C)
         SENSOR_IDX_MAINS_SUPPLY,    // Coldest (ground water)
     };
 
@@ -738,36 +738,27 @@ void sensors_task(void *arg)
         }
 
         // ── 5. Update shared readings ─────────────────────────
-        if (ok[SENSOR_IDX_HOT_OUTLET] &&
-            ok[SENSOR_IDX_CYLINDER_INLET] &&
-            ok[SENSOR_IDX_MAINS_SUPPLY]) {
+        xSemaphoreTake(s_mutex, portMAX_DELAY);
+        if (ok[SENSOR_IDX_HOT_OUTLET])     s_readings.hot_outlet     = temps[SENSOR_IDX_HOT_OUTLET];
+        if (ok[SENSOR_IDX_CYLINDER_INLET]) s_readings.cylinder_inlet = temps[SENSOR_IDX_CYLINDER_INLET];
+        if (ok[SENSOR_IDX_MAINS_SUPPLY])   s_readings.mains_supply   = temps[SENSOR_IDX_MAINS_SUPPLY];
+        if (ok[SENSOR_IDX_TUNDISH])        s_readings.tundish        = temps[SENSOR_IDX_TUNDISH];
+        s_readings.leak_wet = leak_wet;
+        s_readings.valid    = true;
 
-            xSemaphoreTake(s_mutex, portMAX_DELAY);
-            s_readings.hot_outlet     = temps[SENSOR_IDX_HOT_OUTLET];
-            s_readings.cylinder_inlet = temps[SENSOR_IDX_CYLINDER_INLET];
-            s_readings.mains_supply   = temps[SENSOR_IDX_MAINS_SUPPLY];
-            if (ok[SENSOR_IDX_TUNDISH]) {
-                s_readings.tundish = temps[SENSOR_IDX_TUNDISH];
-            }
-            s_readings.leak_wet = leak_wet;
-            s_readings.valid    = true;
-
-            // Update per-role tracking
-            for (int i = 0; i < SENSOR_COUNT; i++) {
-                s_role_present[i] = ok[i];
-                if (ok[i]) s_role_temps[i] = temps[i];
-            }
-            xSemaphoreGive(s_mutex);
-
-            ESP_LOGI(TAG, "Hot=%.2f  Inlet=%.2f  Mains=%.2f  Tundish=%s  Leak=%s",
-                     temps[SENSOR_IDX_HOT_OUTLET],
-                     temps[SENSOR_IDX_CYLINDER_INLET],
-                     temps[SENSOR_IDX_MAINS_SUPPLY],
-                     ok[SENSOR_IDX_TUNDISH] ? "ok" : "err",
-                     leak_wet ? "WET!" : "dry");
-        } else {
-            ESP_LOGW(TAG, "Partial read failure — retaining previous values");
+        // Update per-role tracking
+        for (int i = 0; i < SENSOR_COUNT; i++) {
+            s_role_present[i] = ok[i];
+            if (ok[i]) s_role_temps[i] = temps[i];
         }
+        xSemaphoreGive(s_mutex);
+
+        ESP_LOGI(TAG, "Hot=%.2f  Inlet=%.2f  Mains=%.2f  Tundish=%.2f  Leak=%s",
+                 s_readings.hot_outlet,
+                 s_readings.cylinder_inlet,
+                 s_readings.mains_supply,
+                 s_readings.tundish,
+                 leak_wet ? "WET!" : "dry");
 
         // ── 6. Wait remainder of 1 s interval ─────────────────
         vTaskDelay(pdMS_TO_TICKS(200));
