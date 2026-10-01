@@ -476,7 +476,7 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
             // Immediately request MTU exchange — the client (Android) will accept
             // our preferred MTU (set to 512 in ble_server_init), negotiating the
             // largest MTU both sides support. This prevents JSON fragmentation.
-            ble_att_exchange_mtu(s_conn_handle, NULL, NULL);
+            ble_gattc_exchange_mtu(s_conn_handle, NULL, NULL);
         } else {
             ESP_LOGW(TAG, "BLE connect failed, status=%d — restarting adv",
                      event->connect.status);
