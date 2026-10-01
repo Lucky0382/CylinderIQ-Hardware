@@ -150,6 +150,12 @@ static void configure_leak_pin(gpio_num_t pin)
             ESP_LOGW(TAG, "adc_oneshot_config_channel failed: %d", err);
         }
     }
+
+    // CRITICAL: adc_oneshot_config_channel automatically disables internal pullups on the pin.
+    // Re-enable the internal pullup so that a dry or disconnected leak cable sits firmly
+    // at 3.3V (ADC ~4000-4095) rather than floating at ~0.5V and causing false alarms.
+    gpio_set_pull_mode(pin, GPIO_PULLUP_ONLY);
+    gpio_pullup_en(pin);
 }
 
 // Reset pulse. Returns true if at least one device pulls the presence pulse.
@@ -765,22 +771,26 @@ void sensors_task(void *arg)
             }
         }
 
-        // ── 4. Read leak rope (active-low digital or analog dip for tap water) ────
+        // ── 4. Read leak rope (analog dip for tap/salt water, digital fallback) ────
         static int s_leak_hold = 0;
         int raw_adc = 4095;
         if (s_adc1_handle) {
             adc_channel_t chan = (s_leak_gpio == GPIO_NUM_7) ? ADC_CHANNEL_6 : ADC_CHANNEL_5;
             adc_oneshot_read(s_adc1_handle, chan, &raw_adc);
+            // Ensure internal pullup stays firmly active after ADC conversions
+            gpio_set_pull_mode(s_leak_gpio, GPIO_PULLUP_ONLY);
+            gpio_pullup_en(s_leak_gpio);
         }
         int digital_lvl = gpio_get_level(s_leak_gpio);
 
-        // Dry reading with pullup is ~4000-4095. Salt water pulls to 0V (digital_lvl == 0).
-        // Tap water (50k-150k ohm) with internal 45k pullup drops ADC to ~2000-3200.
-        // Threshold < 3400 provides high-sensitivity domestic tap water detection without false triggers.
-        bool raw_wet = (digital_lvl == 0) || (raw_adc < 3400);
+        // Dry/disconnected with pullup: ~3900-4095 (3.3V).
+        // Salt water or hard short: 0-300 (0V).
+        // Tap water (50k-150k ohm) with 45k internal pullup: ~1500-2800 (~1.2-2.3V).
+        // When ADC is enabled, digital_lvl returns 0 (digital buffer disabled), so rely on raw_adc < 3200.
+        bool raw_wet = s_adc1_handle ? (raw_adc < 3200) : (digital_lvl == 0);
         if (raw_wet) {
-            s_leak_hold = 5; // Hold wet state for at least 5 cycles (~5 seconds)
-            ESP_LOGW(TAG, "LEAK DETECTED — rope GPIO%d (lvl=%d, adc=%d)", (int)s_leak_gpio, digital_lvl, raw_adc);
+            s_leak_hold = 2; // Hold wet state for 2 cycles (~2 seconds)
+            ESP_LOGW(TAG, "LEAK DETECTED — rope GPIO%d (adc=%d, lvl=%d)", (int)s_leak_gpio, raw_adc, digital_lvl);
         } else if (s_leak_hold > 0) {
             s_leak_hold--;
         }
