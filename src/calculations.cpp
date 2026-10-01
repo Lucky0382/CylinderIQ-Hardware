@@ -27,6 +27,7 @@ static float s_prev_tundish= 0.0f;
 
 // ── Safety & PRV / Draw tracking state ─────────────────────────────────────────
 static bool    s_leak_alert          = false;
+static int64_t s_leak_snooze_until_ms = 0; // 5-minute silence snooze after cancel
 static bool    s_tundish_alert       = false;
 static float   s_tundish_surge_delta = 0.0f;
 static bool    s_flow_active         = false;
@@ -130,8 +131,17 @@ void calc_run(void)
     // ── PRV Drop / Thermal Surge Trigger ──────────────────────
     bool tundish_surge = (max_tundish_rise >= 4.5f) || (s.tundish >= 28.5f && s_prev_tundish < 28.5f);
 
-    // ── Moisture Leak Rope Trigger ────────────────────────────
-    if (s.leak_wet && !s_leak_alert) {
+    // ── Moisture Leak Rope Trigger (with 5-minute silence snooze) ────
+    bool leak_snoozed = (now_ms < s_leak_snooze_until_ms);
+
+    // If cable has physically dried out, auto-clear snooze timer so next wet event alerts immediately
+    if (!s.leak_wet && s_leak_snooze_until_ms > 0) {
+        s_leak_snooze_until_ms = 0;
+        leak_snoozed = false;
+        ESP_LOGI(TAG, "Leak cable dry — snooze timer reset");
+    }
+
+    if (s.leak_wet && !s_leak_alert && !leak_snoozed) {
         s_leak_alert = true;
         ESP_LOGE(TAG, "AUTONOMOUS INTERLOCK: Base perimeter leak rope is WET! Tripping cutoffs.");
         trigger_autonomous_safety_shutoff();
@@ -243,7 +253,7 @@ void calc_run(void)
     s_result.cylinder_inlet      = s.cylinder_inlet;
     s_result.mains_supply        = s.mains_supply;
     s_result.tundish             = s.tundish;
-    s_result.leak_wet            = s.leak_wet;
+    s_result.leak_wet            = leak_snoozed ? false : s.leak_wet;
     s_result.leak_alert          = s_leak_alert;
     s_result.tundish_alert       = s_tundish_alert;
     s_result.tundish_surge_delta = s_tundish_surge_delta;
@@ -313,15 +323,20 @@ void calc_stop_simulation(void)
 void calc_reset_alerts(void)
 {
     ensure_init();
+    int64_t now_ms = esp_timer_get_time() / 1000;
+    // Snooze leak alarm for 5 minutes (300,000 ms) so demo is not interrupted
+    s_leak_snooze_until_ms = now_ms + (5 * 60 * 1000);
+
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     s_leak_alert          = false;
     s_tundish_alert       = false;
     s_flow_active         = false;
     s_tundish_surge_delta = 0.0f;
+    s_result.leak_wet            = false;
     s_result.leak_alert          = false;
     s_result.tundish_alert       = false;
     s_result.flow_active         = false;
     s_result.tundish_surge_delta = 0.0f;
     xSemaphoreGive(s_mutex);
-    ESP_LOGI(TAG, "Safety alerts and active flow simulation cleared");
+    ESP_LOGI(TAG, "Safety alerts cleared — leak alert snoozed for 5 minutes");
 }
