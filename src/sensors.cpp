@@ -625,6 +625,22 @@ static void discover_and_map(void)
 
         if (all_present) {
             ESP_LOGI(TAG, "All 4 sensors verified from NVS — using stored mapping");
+
+            // Check if cylinder_inlet has the tundish ROM (287DBD52000000B0)
+            if (s_roms[SENSOR_IDX_CYLINDER_INLET][0] == 0x28 &&
+                s_roms[SENSOR_IDX_CYLINDER_INLET][1] == 0x7D &&
+                s_roms[SENSOR_IDX_CYLINDER_INLET][2] == 0xBD) {
+                ESP_LOGW(TAG, "Swapping inverted cylinder_inlet and tundish roles in NVS...");
+                uint8_t tmp_rom[8];
+                memcpy(tmp_rom, s_roms[SENSOR_IDX_CYLINDER_INLET], 8);
+                memcpy(s_roms[SENSOR_IDX_CYLINDER_INLET], s_roms[SENSOR_IDX_TUNDISH], 8);
+                memcpy(s_roms[SENSOR_IDX_TUNDISH], tmp_rom, 8);
+                nvs_set_sensor_roms(s_roms);
+                ESP_LOGI(TAG, "Updated mapping saved to NVS: cylinder_inlet=%s, tundish=%s",
+                         rom_to_str(s_roms[SENSOR_IDX_CYLINDER_INLET]),
+                         rom_to_str(s_roms[SENSOR_IDX_TUNDISH]));
+            }
+
             s_mapped = true;
             s_from_nvs = true;
             s_bus_count = SENSOR_COUNT;
