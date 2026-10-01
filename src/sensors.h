@@ -9,7 +9,7 @@ extern "C" {
 // ──────────────────────────────────────────────────────────────
 // CylinderIQ Hub V2 — Sensor module (ESP32-S3)
 //
-// Reads 4x DS18B20 on OneWire bus (GPIO6, open-drain, 4.7kΩ pullup).
+// Reads 4x DS18B20 on OneWire bus (GPIO7, open-drain, 4.7kΩ pullup).
 // ROM addresses are auto-discovered at boot via OneWire Search ROM,
 // then assigned to roles by temperature ranking:
 //   Hottest  → hot_outlet     (hot water pipe from cylinder top)
@@ -18,7 +18,7 @@ extern "C" {
 //   Coldest  → mains_supply   (incoming ground water)
 // Mapping is persisted in NVS and survives reboots.
 //
-// Leak detection rope on GPIO7 (internal pullup — HIGH=dry, LOW=wet).
+// Leak detection rope on GPIO6 (internal pullup — HIGH=dry, LOW=wet).
 //
 // Public API:
 //   sensors_init()       — call once from app_main before starting task
