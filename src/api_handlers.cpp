@@ -63,6 +63,7 @@ static cJSON *build_sensors_json(const calc_result_t *r)
     cJSON_AddNumberToObject(s, "cylinder_inlet",    roundf(r->cylinder_inlet * 10.0f) / 10.0f);
     cJSON_AddNumberToObject(s, "mains_supply",      roundf(r->mains_supply * 10.0f) / 10.0f);
     cJSON_AddNumberToObject(s, "tundish",           roundf(r->tundish * 10.0f) / 10.0f);
+    cJSON_AddBoolToObject(  s, "leak",              r->leak_wet || r->leak_alert);
     cJSON_AddBoolToObject(  s, "leak_wet",          r->leak_wet);
     cJSON_AddBoolToObject(  s, "leak_alert",        r->leak_alert);
     cJSON_AddBoolToObject(  s, "tundish_alert",     r->tundish_alert);
