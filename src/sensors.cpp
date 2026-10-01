@@ -21,6 +21,7 @@
 #include "nvs_store.h"
 
 #include "driver/gpio.h"
+#include "driver/rtc_io.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -149,11 +150,16 @@ static void configure_leak_pin(gpio_num_t pin)
         } else {
             ESP_LOGW(TAG, "adc_oneshot_config_channel failed: %d", err);
         }
+
+        // CRITICAL: ESP-IDF's s_adc_io_init calls rtc_gpio_init and rtc_gpio_pullup_dis.
+        // On ESP32-S3, analog pads are routed to RTC_IO, so we MUST enable the RTC pull-up
+        // via rtc_gpio_pullup_en so the pad sits firmly at 3.3V (ADC ~4000-4095) when dry.
+        rtc_gpio_init(pin);
+        rtc_gpio_set_direction(pin, RTC_GPIO_MODE_INPUT_ONLY);
+        rtc_gpio_pulldown_dis(pin);
+        rtc_gpio_pullup_en(pin);
     }
 
-    // CRITICAL: adc_oneshot_config_channel automatically disables internal pullups on the pin.
-    // Re-enable the internal pullup so that a dry or disconnected leak cable sits firmly
-    // at 3.3V (ADC ~4000-4095) rather than floating at ~0.5V and causing false alarms.
     gpio_set_pull_mode(pin, GPIO_PULLUP_ONLY);
     gpio_pullup_en(pin);
 }
@@ -778,6 +784,7 @@ void sensors_task(void *arg)
             adc_channel_t chan = (s_leak_gpio == GPIO_NUM_7) ? ADC_CHANNEL_6 : ADC_CHANNEL_5;
             adc_oneshot_read(s_adc1_handle, chan, &raw_adc);
             // Ensure internal pullup stays firmly active after ADC conversions
+            rtc_gpio_pullup_en(s_leak_gpio);
             gpio_set_pull_mode(s_leak_gpio, GPIO_PULLUP_ONLY);
             gpio_pullup_en(s_leak_gpio);
         }
