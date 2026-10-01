@@ -30,9 +30,12 @@ typedef struct {
     float tundish_surge_delta; // delta T recorded during surge (e.g. 5.4C)
 
     // Draw / Flow state
-    bool  flow_active;       // true during draw or PRV drop
-    float flow_rate_lpm;     // L/min (default 9.0)
-    float snapshot_usable;   // snapshot taken at draw/drop trigger
+    bool  flow_active;       // true while software water-use simulation is active
+    float flow_rate_lpm;     // simulation rate in L/min (default 9.0)
+    float snapshot_usable;   // actual usable litres captured when simulation started
+    float actual_usable_litres; // live thermal-model result, never modified by simulation
+    float simulated_draw_litres; // litres subtracted by the test simulation
+    float simulation_target_litres; // 0 = run until stopped
 
     // Derived
     float usable_litres;     // litres of usable hot water now
@@ -51,6 +54,13 @@ void calc_run(void);
 
 // Thread-safe snapshot of the last computed result.
 calc_result_t calc_get(void);
+
+// Start a software-only water-use simulation from the current actual usable volume.
+// litres=0 means run until stopped. rate_lpm defaults to 9 L/min when <= 0.
+void calc_start_simulation(float litres, float rate_lpm);
+
+// Stop the software simulation. The thermal model remains untouched.
+void calc_stop_simulation(void);
 
 // Reset / silence latched alerts and stop active flow simulation
 void calc_reset_alerts(void);
