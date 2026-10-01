@@ -169,35 +169,32 @@ void calc_run(void)
     float ratio = ((float)tank_size > 0.0f) ? (base_usable / (float)tank_size) : 0.0f;
     if (ratio > 1.0f) ratio = 1.0f;
 
-    // ── Flow Trigger: PRV drop or Top Temp Shoot-Up ───────────
-    if ((tundish_surge || top_temp_shoot_up) && !s_flow_active) {
-        s_flow_active = true;
-        s_flow_start_us = esp_timer_get_time();
-        // Capture snapshot of usable hot water at start of draw / drop
-        s_snapshot_usable = (s_result.valid && s_result.usable_litres > 0.0f) ? s_result.usable_litres : base_usable;
-
-        if (tundish_surge) {
-            s_tundish_alert = true;
-            s_tundish_surge_delta = (max_tundish_rise > 0.0f) ? max_tundish_rise : (s.tundish - 20.0f);
-            ESP_LOGW(TAG, "PRV THERMAL SURGE (+%.1f°C)! Taking snapshot=%.1fL and starting draw simulation",
-                     s_tundish_surge_delta, s_snapshot_usable);
-            trigger_autonomous_safety_shutoff();
-        } else {
-            ESP_LOGI(TAG, "TOP TEMP SHOOT-UP (+%.2f°C)! Draw initiated, snapshot=%.1fL",
-                     d_outlet, s_snapshot_usable);
-        }
+    // ── PRV / top-temperature events are NOT water-draw triggers ────────
+    // There is no flow switch on the current hardware. A PRV thermal surge
+    // is a safety event, not a domestic hot-water draw.
+    if (tundish_surge) {
+        s_tundish_alert = true;
+        s_tundish_surge_delta = (max_tundish_rise > 0.0f)
+                              ? max_tundish_rise
+                              : (s.tundish - s_prev_tundish);
+        ESP_LOGW(TAG, "PRV THERMAL SURGE (+%.1f°C) — safety event only",
+                 s_tundish_surge_delta);
+        trigger_autonomous_safety_shutoff();
     }
 
-    // ── Dynamic Usable Hot Water (during active flow vs steady state) ──
+    // ── Dynamic Usable Hot Water ────────────────────────────────────────
+    // During a deliberate software test, hold the stable usable snapshot
+    // and subtract a synthetic draw at the configured rate.
     float usable = base_usable;
     float hot_pct = ratio * 100.0f;
 
     if (s_flow_active) {
         float elapsed_s = (float)(esp_timer_get_time() - s_flow_start_us) / 1000000.0f;
-        float drawn_litres = elapsed_s * (FLOW_RATE_LPM / 60.0f); // 9 L/min = 0.15 L/s
+        float drawn_litres = elapsed_s * (FLOW_RATE_LPM / 60.0f);
         usable = s_snapshot_usable - drawn_litres;
         if (usable < 0.0f) usable = 0.0f;
-        hot_pct = ((float)tank_size > 0.0f) ? ((usable / (float)tank_size) * 100.0f) : 0.0f;
+        hot_pct = ((float)tank_size > 0.0f)
+                ? ((usable / (float)tank_size) * 100.0f) : 0.0f;
     }
 
     // ── Mains reference update ────────────────────────────────
@@ -253,6 +250,10 @@ void calc_run(void)
     s_result.flow_active         = s_flow_active;
     s_result.flow_rate_lpm       = FLOW_RATE_LPM;
     s_result.snapshot_usable     = s_snapshot_usable;
+    s_result.actual_usable_litres = base_usable;
+    s_result.simulated_draw_litres = s_flow_active
+        ? fmaxf(0.0f, s_snapshot_usable - usable) : 0.0f;
+    s_result.simulation_target_litres = 0.0f;
     s_result.usable_litres       = usable;
     s_result.hot_pct             = hot_pct;
     s_result.showers_remaining   = showers;
@@ -274,6 +275,39 @@ calc_result_t calc_get(void)
     calc_result_t copy = s_result;
     xSemaphoreGive(s_mutex);
     return copy;
+}
+
+void calc_start_simulation(float litres, float rate_lpm)
+{
+    ensure_init();
+
+    if (s_flow_active) s_flow_active = false;
+
+    calc_result_t current = calc_get();
+    s_snapshot_usable = current.usable_litres;
+    if (s_snapshot_usable < 0.0f) s_snapshot_usable = 0.0f;
+
+    // Current v2.19 test simulation uses the established 9 L/min rate.
+    // The API accepts the arguments so the interface is future-proof.
+    (void)rate_lpm;
+    (void)litres;
+
+    s_flow_start_us = esp_timer_get_time();
+    s_flow_active = true;
+
+    ESP_LOGI(TAG, "WATER-USE SIMULATION START: snapshot=%.1fL rate=%.1fL/min",
+             s_snapshot_usable, FLOW_RATE_LPM);
+    calc_run();
+}
+
+void calc_stop_simulation(void)
+{
+    ensure_init();
+    s_flow_active = false;
+    s_flow_start_us = 0;
+    s_snapshot_usable = 0.0f;
+    calc_run();
+    ESP_LOGI(TAG, "WATER-USE SIMULATION STOP — thermal model restored");
 }
 
 void calc_reset_alerts(void)
