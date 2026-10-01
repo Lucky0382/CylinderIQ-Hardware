@@ -21,6 +21,7 @@
 #include "nvs_store.h"
 
 #include "driver/gpio.h"
+#include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -29,6 +30,7 @@
 #include <string.h>
 
 static const char *TAG = "sensors";
+static adc_oneshot_unit_handle_t s_adc1_handle = NULL;
 
 // Role names for logging
 static const char *ROLE_NAMES[SENSOR_COUNT] = {
@@ -120,6 +122,32 @@ static void configure_leak_pin(gpio_num_t pin)
     };
     gpio_config(&leak_cfg);
     s_leak_gpio = pin;
+
+    // Initialize ADC1 for analog leak detection (domestic tap water sensitivity)
+    if (!s_adc1_handle) {
+        adc_oneshot_unit_init_cfg_t init_config = {
+            .unit_id = ADC_UNIT_1,
+            .ulp_mode = ADC_ULP_MODE_DISABLE,
+        };
+        esp_err_t err = adc_oneshot_new_unit(&init_config, &s_adc1_handle);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "adc_oneshot_new_unit failed: %d", err);
+        }
+    }
+
+    if (s_adc1_handle) {
+        adc_channel_t chan = (pin == GPIO_NUM_7) ? ADC_CHANNEL_6 : ADC_CHANNEL_5;
+        adc_oneshot_chan_cfg_t chan_config = {
+            .atten = ADC_ATTEN_DB_12,
+            .bitwidth = ADC_BITWIDTH_DEFAULT,
+        };
+        esp_err_t err = adc_oneshot_config_channel(s_adc1_handle, chan, &chan_config);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG, "Configured Leak ADC on GPIO %d (ADC1 channel %d)", (int)pin, (int)chan);
+        } else {
+            ESP_LOGW(TAG, "adc_oneshot_config_channel failed: %d", err);
+        }
+    }
 }
 
 // Reset pulse. Returns true if at least one device pulls the presence pulse.
@@ -731,12 +759,22 @@ void sensors_task(void *arg)
             }
         }
 
-        // ── 4. Read leak rope (active-low with persistence hold) ────
+        // ── 4. Read leak rope (active-low digital or analog dip for tap water) ────
         static int s_leak_hold = 0;
-        bool raw_wet = (gpio_get_level(s_leak_gpio) == 0);
+        int raw_adc = 4095;
+        if (s_adc1_handle) {
+            adc_channel_t chan = (s_leak_gpio == GPIO_NUM_7) ? ADC_CHANNEL_6 : ADC_CHANNEL_5;
+            adc_oneshot_read(s_adc1_handle, chan, &raw_adc);
+        }
+        int digital_lvl = gpio_get_level(s_leak_gpio);
+
+        // Dry reading with pullup is ~4000-4095. Salt water pulls to 0V (digital_lvl == 0).
+        // Tap water (50k-150k ohm) with internal 45k pullup drops ADC to ~2000-3200.
+        // Threshold < 3400 provides high-sensitivity domestic tap water detection without false triggers.
+        bool raw_wet = (digital_lvl == 0) || (raw_adc < 3400);
         if (raw_wet) {
             s_leak_hold = 5; // Hold wet state for at least 5 cycles (~5 seconds)
-            ESP_LOGW(TAG, "LEAK DETECTED — rope GPIO%d LOW", (int)s_leak_gpio);
+            ESP_LOGW(TAG, "LEAK DETECTED — rope GPIO%d (lvl=%d, adc=%d)", (int)s_leak_gpio, digital_lvl, raw_adc);
         } else if (s_leak_hold > 0) {
             s_leak_hold--;
         }
@@ -758,12 +796,13 @@ void sensors_task(void *arg)
         }
         xSemaphoreGive(s_mutex);
 
-        ESP_LOGI(TAG, "Hot=%.2f  Inlet=%.2f  Mains=%.2f  Tundish=%.2f  Leak=%s",
+        ESP_LOGI(TAG, "Hot=%.2f  Inlet=%.2f  Mains=%.2f  Tundish=%.2f  Leak=%s (adc=%d)",
                  s_readings.hot_outlet,
                  s_readings.cylinder_inlet,
                  s_readings.mains_supply,
                  s_readings.tundish,
-                 leak_wet ? "WET!" : "dry");
+                 leak_wet ? "WET!" : "dry",
+                 raw_adc);
 
         // ── 6. Wait remainder of 1 s interval ─────────────────
         vTaskDelay(pdMS_TO_TICKS(200));
