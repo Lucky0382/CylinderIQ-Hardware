@@ -731,11 +731,16 @@ void sensors_task(void *arg)
             }
         }
 
-        // ── 4. Read leak rope (active-low) ──────────────────
-        bool leak_wet = (gpio_get_level(s_leak_gpio) == 0);
-        if (leak_wet) {
+        // ── 4. Read leak rope (active-low with persistence hold) ────
+        static int s_leak_hold = 0;
+        bool raw_wet = (gpio_get_level(s_leak_gpio) == 0);
+        if (raw_wet) {
+            s_leak_hold = 5; // Hold wet state for at least 5 cycles (~5 seconds)
             ESP_LOGW(TAG, "LEAK DETECTED — rope GPIO%d LOW", (int)s_leak_gpio);
+        } else if (s_leak_hold > 0) {
+            s_leak_hold--;
         }
+        bool leak_wet = (s_leak_hold > 0);
 
         // ── 5. Update shared readings ─────────────────────────
         xSemaphoreTake(s_mutex, portMAX_DELAY);
