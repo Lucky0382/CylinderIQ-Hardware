@@ -55,6 +55,9 @@ void    nvs_set_bl_hot(float v);
 float   nvs_get_bl_post_draw(void);  // baseline post-draw temp
 void    nvs_set_bl_post_draw(float v);
 
+float   nvs_get_desired_temp(void);  // desired hot water temp threshold (default 42.0°C)
+void    nvs_set_desired_temp(float v);
+
 // ── Profiles ─────────────────────────────────────────────────
 int32_t nvs_get_active_profile(void);
 void    nvs_set_active_profile(int32_t v);

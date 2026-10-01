@@ -77,6 +77,7 @@ static cJSON *build_sensors_json(const calc_result_t *r)
     cJSON_AddNumberToObject(s, "baths_remaining",   roundf(r->baths_remaining * 10.0f) / 10.0f);
     cJSON_AddNumberToObject(s, "recovery_min",      roundf(r->recovery_min));
     cJSON_AddNumberToObject(s, "cost_pence",        roundf(r->cost_pence * 10.0f) / 10.0f);
+    cJSON_AddNumberToObject(s, "desired_temp",      roundf(nvs_get_desired_temp() * 10.0f) / 10.0f);
     return s;
 }
 
@@ -677,6 +678,32 @@ void api_dispatch(const char *method,
 
     if (strcmp(path, "/learn/stop") == 0 && strcmp(method, "POST") == 0) {
         *resp_body = handle_learn_stop();
+        return;
+    }
+
+    // GET /config/desired_temp
+    if (strcmp(path, "/config/desired_temp") == 0 && strcmp(method, "GET") == 0) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "{\"ok\":true,\"desired_temp\":%.1f}", nvs_get_desired_temp());
+        *resp_body = strdup(buf);
+        return;
+    }
+
+    // POST /config/desired_temp
+    if (strcmp(path, "/config/desired_temp") == 0 && strcmp(method, "POST") == 0) {
+        cJSON *req = cJSON_Parse(body);
+        if (!req) { *resp_status = 400; *resp_body = make_error("bad JSON"); return; }
+        cJSON *jt = cJSON_GetObjectItem(req, "temp");
+        if (jt && cJSON_IsNumber(jt)) {
+            float t = (float)jt->valuedouble;
+            if (t >= 35.0f && t <= 65.0f) {
+                nvs_set_desired_temp(t);
+                calc_run();
+                ESP_LOGI(TAG, "Config set desired_temp to %.1f °C", t);
+            }
+        }
+        cJSON_Delete(req);
+        *resp_body = strdup("{\"ok\":true}");
         return;
     }
 

@@ -137,17 +137,37 @@ void calc_run(void)
         trigger_autonomous_safety_shutoff();
     }
 
-    // ── Base Usable Hot Water Calculation (thermal model) ─────
-    float ratio = 0.0f;
-    float denom = bl_hot - 40.0f;
-    if (denom < 5.0f) denom = 20.0f; // guard against degenerate calibration
-    if (s.hot_outlet >= 40.0f) {
-        ratio = (s.hot_outlet - 40.0f) / denom;
-    }
-    if (ratio < 0.0f) ratio = 0.0f;
-    if (ratio > 1.0f) ratio = 1.0f;
+    // ── Base Usable Hot Water Calculation (stratified 3-zone model) ─────
+    float desired_temp = nvs_get_desired_temp();
+    if (desired_temp < 35.0f || desired_temp > 65.0f) desired_temp = 42.0f;
+    float mains_base = (s.mains_supply > 5.0f && s.mains_supply < 35.0f) ? s.mains_supply : bl_cold;
+    if (mains_base < 5.0f) mains_base = 15.0f;
+    float delta_t = desired_temp - mains_base;
+    if (delta_t < 5.0f) delta_t = 20.0f;
 
-    float base_usable = ratio * (float)tank_size;
+    float base_usable = 0.0f;
+    if (s.hot_outlet > mains_base + 2.0f) {
+        float zone_vol = (float)tank_size / 3.0f;
+        float top_f = (s.hot_outlet - mains_base) / delta_t;
+        if (top_f < 0.0f) top_f = 0.0f;
+        if (top_f > 1.4f) top_f = 1.4f;
+
+        float mid_f = (s.cylinder_inlet - mains_base) / delta_t;
+        if (mid_f < 0.0f) mid_f = 0.0f;
+        if (mid_f > 1.4f) mid_f = 1.4f;
+
+        float bot_f = 0.0f;
+        if (s.mains_supply > mains_base + 3.0f) {
+            bot_f = (s.mains_supply - mains_base) / delta_t;
+            if (bot_f < 0.0f) bot_f = 0.0f;
+            if (bot_f > 1.0f) bot_f = 1.0f;
+        }
+
+        base_usable = (top_f + mid_f + bot_f) * zone_vol;
+        if (base_usable > (float)tank_size * 1.15f) base_usable = (float)tank_size * 1.15f;
+    }
+    float ratio = ((float)tank_size > 0.0f) ? (base_usable / (float)tank_size) : 0.0f;
+    if (ratio > 1.0f) ratio = 1.0f;
 
     // ── Flow Trigger: PRV drop or Top Temp Shoot-Up ───────────
     if ((tundish_surge || top_temp_shoot_up) && !s_flow_active) {

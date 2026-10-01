@@ -248,6 +248,21 @@ static void handle_ble_command(const char *json_in, char **resp_out)
         *resp_out = strdup("{\"ok\":true,\"cmd\":\"tank_size\"}");
         return;
 
+    } else if (strcmp(cmd, "desired_temp") == 0 || strcmp(cmd, "set_desired_temp") == 0) {
+        cJSON *jtemp = cJSON_GetObjectItem(msg, "temp");
+        if (cJSON_IsNumber(jtemp)) {
+            float dt = (float)jtemp->valuedouble;
+            if (dt >= 35.0f && dt <= 65.0f) {
+                nvs_set_desired_temp(dt);
+                calc_run();
+                ESP_LOGI(TAG, "BLE set desired_temp to %.1f °C", dt);
+            }
+        }
+        cJSON_Delete(body);
+        cJSON_Delete(msg);
+        *resp_out = strdup("{\"ok\":true,\"cmd\":\"desired_temp\"}");
+        return;
+
     } else if (strcmp(cmd, "sensor_map") == 0 || strcmp(cmd, "get_sensor_map") == 0) {
         strncpy(path, "/sensors/map", sizeof(path));
         method = "GET";

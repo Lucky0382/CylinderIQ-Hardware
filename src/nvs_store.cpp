@@ -222,6 +222,9 @@ void    nvs_set_bl_hot(float v)     { nvs_set_float_key("bl_hot", v); }
 float   nvs_get_bl_post_draw(void)  { return nvs_get_float_default("bl_post_draw", 55.0f); }
 void    nvs_set_bl_post_draw(float v){ nvs_set_float_key("bl_post_draw", v); }
 
+float   nvs_get_desired_temp(void)        { return nvs_get_float_default("desired_temp", 42.0f); }
+void    nvs_set_desired_temp(float v)     { nvs_set_float_key("desired_temp", v); }
+
 // ── Profiles ─────────────────────────────────────────────────
 
 int32_t nvs_get_active_profile(void)     { return nvs_get_i32_default("active_profile", 0); }
