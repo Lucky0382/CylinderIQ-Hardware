@@ -78,6 +78,7 @@ static cJSON *build_sensors_json(const calc_result_t *r)
     cJSON_AddNumberToObject(s, "recovery_min",      roundf(r->recovery_min));
     cJSON_AddNumberToObject(s, "cost_pence",        roundf(r->cost_pence * 10.0f) / 10.0f);
     cJSON_AddNumberToObject(s, "desired_temp",      roundf(nvs_get_desired_temp() * 10.0f) / 10.0f);
+    cJSON_AddNumberToObject(s, "tank_size",         (double)nvs_get_tank_size());
     return s;
 }
 

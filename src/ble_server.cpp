@@ -473,6 +473,10 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
         if (event->connect.status == 0) {
             s_conn_handle = event->connect.conn_handle;
             ESP_LOGI(TAG, "BLE client connected, conn_handle=%d", s_conn_handle);
+            // Immediately request MTU exchange — the client (Android) will accept
+            // our preferred MTU (set to 512 in ble_server_init), negotiating the
+            // largest MTU both sides support. This prevents JSON fragmentation.
+            ble_att_exchange_mtu(s_conn_handle, NULL, NULL);
         } else {
             ESP_LOGW(TAG, "BLE connect failed, status=%d — restarting adv",
                      event->connect.status);
@@ -484,6 +488,14 @@ static int gap_event_cb(struct ble_gap_event *event, void *arg)
         ESP_LOGI(TAG, "BLE client disconnected, reason=%d", event->disconnect.reason);
         s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
         ble_server_start_adv();
+        break;
+
+    case BLE_GAP_EVENT_MTU:
+        // Android negotiated this MTU — log it so we can confirm fragmentation is resolved
+        ESP_LOGI(TAG, "MTU negotiated: conn=%d channel=%d mtu=%d",
+                 event->mtu.conn_handle,
+                 event->mtu.channel_id,
+                 event->mtu.value);
         break;
 
     default:
@@ -542,6 +554,10 @@ void ble_server_init(void)
         ESP_LOGE(TAG, "ble_gatts_add_svcs failed: %d", rc);
         return;
     }
+
+    // Set preferred ATT MTU large enough to hold the full telemetry JSON (~300 bytes)
+    // in a single notification packet, eliminating fragmentation.
+    ble_att_set_preferred_mtu(512);
 
     // Start NimBLE host on core 1, priority 5 (same as uart_rx — high priority)
     nimble_port_freertos_init(ble_host_task);

@@ -54,10 +54,12 @@ static volatile bool s_rescan_requested = false;
 static gpio_num_t s_sensors_gpio = DEFAULT_SENSORS_GPIO; // GPIO 7 default
 static gpio_num_t s_leak_gpio    = DEFAULT_LEAK_GPIO;    // GPIO 6 default
 
-// Candidate pins to scan if sensors are not found on the default pin
+// Candidate pins to scan if sensors are not found on the default pin.
+// IMPORTANT: GPIO_NUM_6 is EXCLUDED — it is the leak rope ADC input.
+// Scanning it as OneWire (open-drain output) trashes the ADC pad config
+// and causes adc_oneshot_read() to return 0 permanently.
 static const gpio_num_t CANDIDATE_PINS[] = {
     GPIO_NUM_7,
-    GPIO_NUM_6,
     GPIO_NUM_8,
     GPIO_NUM_1,
     GPIO_NUM_2,
@@ -656,6 +658,10 @@ static void discover_and_map(void)
             }
         }
     }
+
+    // Always re-initialise the leak pin after any candidate pin scan —
+    // ensures the ADC pad config is restored even if adjacent GPIOs were touched.
+    configure_leak_pin(s_leak_gpio);
 
     s_bus_count = disc_count;
 
