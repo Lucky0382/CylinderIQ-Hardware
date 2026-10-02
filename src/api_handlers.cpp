@@ -682,6 +682,28 @@ void api_dispatch(const char *method,
         return;
     }
 
+    if ((strcmp(path, "/simulation/start") == 0 || strcmp(path, "/api/simulation/start") == 0) && strcmp(method, "POST") == 0) {
+        cJSON *req = cJSON_Parse(body);
+        float litres = 0.0f;
+        float rate = 4.0f;
+        if (req) {
+            cJSON *jl = cJSON_GetObjectItem(req, "litres");
+            cJSON *jr = cJSON_GetObjectItem(req, "rate");
+            if (jl && cJSON_IsNumber(jl)) litres = (float)jl->valuedouble;
+            if (jr && cJSON_IsNumber(jr)) rate = (float)jr->valuedouble;
+            cJSON_Delete(req);
+        }
+        calc_start_simulation(litres, rate);
+        *resp_body = strdup("{\"ok\":true,\"cmd\":\"simulation_start\"}");
+        return;
+    }
+
+    if ((strcmp(path, "/simulation/stop") == 0 || strcmp(path, "/api/simulation/stop") == 0) && strcmp(method, "POST") == 0) {
+        calc_stop_simulation();
+        *resp_body = strdup("{\"ok\":true,\"cmd\":\"simulation_stop\"}");
+        return;
+    }
+
     // GET /config/desired_temp
     if (strcmp(path, "/config/desired_temp") == 0 && strcmp(method, "GET") == 0) {
         char buf[64];

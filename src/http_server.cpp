@@ -116,6 +116,9 @@ static esp_err_t handler_post_learn_stop(httpd_req_t *req)      { return dispatc
 static esp_err_t handler_post_sensor_rescan(httpd_req_t *req)   { return dispatch_local_s3(req, "POST", "/sensors/rescan"); }
 static esp_err_t handler_post_sensor_swap(httpd_req_t *req)     { return dispatch_local_s3(req, "POST", "/sensors/swap"); }
 static esp_err_t handler_post_sensor_gpio(httpd_req_t *req)     { return dispatch_local_s3(req, "POST", "/sensors/gpio"); }
+static esp_err_t handler_post_alert_reset(httpd_req_t *req)      { return dispatch_local_s3(req, "POST", "/alert/reset"); }
+static esp_err_t handler_post_simulation_start(httpd_req_t *req) { return dispatch_local_s3(req, "POST", "/simulation/start"); }
+static esp_err_t handler_post_simulation_stop(httpd_req_t *req)  { return dispatch_local_s3(req, "POST", "/simulation/stop"); }
 
 // ── Switch Control (Forwarded to C6 via UART) ─────────────────
 static esp_err_t handler_get_switches(httpd_req_t *req)
@@ -249,6 +252,10 @@ static const httpd_uri_t s_routes[] = {
     { .uri = "/sensors/rescan",    .method = HTTP_POST, .handler = handler_post_sensor_rescan,       .user_ctx = NULL },
     { .uri = "/sensors/swap",      .method = HTTP_POST, .handler = handler_post_sensor_swap,         .user_ctx = NULL },
     { .uri = "/sensors/gpio",      .method = HTTP_POST, .handler = handler_post_sensor_gpio,         .user_ctx = NULL },
+    { .uri = "/alert/reset",       .method = HTTP_POST, .handler = handler_post_alert_reset,        .user_ctx = NULL },
+    { .uri = "/alert/silence",     .method = HTTP_POST, .handler = handler_post_alert_reset,        .user_ctx = NULL },
+    { .uri = "/simulation/start",  .method = HTTP_POST, .handler = handler_post_simulation_start,   .user_ctx = NULL },
+    { .uri = "/simulation/stop",   .method = HTTP_POST, .handler = handler_post_simulation_stop,    .user_ctx = NULL },
 };
 
 #define ROUTE_COUNT (sizeof(s_routes) / sizeof(s_routes[0]))

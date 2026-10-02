@@ -33,7 +33,7 @@ static float   s_tundish_surge_delta = 0.0f;
 static bool    s_flow_active         = false;
 static float   s_snapshot_usable     = 0.0f;
 static int64_t s_flow_start_us       = 0;
-static const float FLOW_RATE_LPM     = 9.0f; // 9 L/min standard shower flow
+static float   s_flow_rate_lpm       = 4.0f; // 4.0 L/min = 1L every 15s (ideal for demo capture)
 
 // Tundish rate-of-rise circular buffer (tracks samples over past 3 seconds)
 #define TUNDISH_HIST_MAX 8
@@ -200,7 +200,7 @@ void calc_run(void)
 
     if (s_flow_active) {
         float elapsed_s = (float)(esp_timer_get_time() - s_flow_start_us) / 1000000.0f;
-        float drawn_litres = elapsed_s * (FLOW_RATE_LPM / 60.0f);
+        float drawn_litres = elapsed_s * (s_flow_rate_lpm / 60.0f);
         usable = s_snapshot_usable - drawn_litres;
         if (usable < 0.0f) usable = 0.0f;
         hot_pct = ((float)tank_size > 0.0f)
@@ -258,7 +258,7 @@ void calc_run(void)
     s_result.tundish_alert       = s_tundish_alert;
     s_result.tundish_surge_delta = s_tundish_surge_delta;
     s_result.flow_active         = s_flow_active;
-    s_result.flow_rate_lpm       = FLOW_RATE_LPM;
+    s_result.flow_rate_lpm       = s_flow_rate_lpm;
     s_result.snapshot_usable     = s_snapshot_usable;
     s_result.actual_usable_litres = base_usable;
     s_result.simulated_draw_litres = s_flow_active
@@ -297,16 +297,18 @@ void calc_start_simulation(float litres, float rate_lpm)
     s_snapshot_usable = current.usable_litres;
     if (s_snapshot_usable < 0.0f) s_snapshot_usable = 0.0f;
 
-    // Current v2.19 test simulation uses the established 9 L/min rate.
-    // The API accepts the arguments so the interface is future-proof.
-    (void)rate_lpm;
+    if (rate_lpm >= 0.1f) {
+        s_flow_rate_lpm = rate_lpm;
+    } else {
+        s_flow_rate_lpm = 4.0f; // 4.0 L/min = 1L every 15s
+    }
     (void)litres;
 
     s_flow_start_us = esp_timer_get_time();
     s_flow_active = true;
 
     ESP_LOGI(TAG, "WATER-USE SIMULATION START: snapshot=%.1fL rate=%.1fL/min",
-             s_snapshot_usable, FLOW_RATE_LPM);
+             s_snapshot_usable, s_flow_rate_lpm);
     calc_run();
 }
 

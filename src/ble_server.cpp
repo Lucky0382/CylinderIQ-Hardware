@@ -279,6 +279,24 @@ static void handle_ble_command(const char *json_in, char **resp_out)
         strncpy(path, "/alert/reset", sizeof(path));
         method = "POST";
 
+    } else if (strcmp(cmd, "simulation") == 0) {
+        cJSON *jact = cJSON_GetObjectItem(msg, "action");
+        const char *act = cJSON_IsString(jact) ? jact->valuestring : "start";
+        if (strcmp(act, "stop") == 0) {
+            strncpy(path, "/simulation/stop", sizeof(path));
+        } else {
+            strncpy(path, "/simulation/start", sizeof(path));
+        }
+        method = "POST";
+
+    } else if (strcmp(cmd, "simulation_start") == 0 || strcmp(cmd, "start_simulation") == 0) {
+        strncpy(path, "/simulation/start", sizeof(path));
+        method = "POST";
+
+    } else if (strcmp(cmd, "simulation_stop") == 0 || strcmp(cmd, "stop_simulation") == 0) {
+        strncpy(path, "/simulation/stop", sizeof(path));
+        method = "POST";
+
     } else if (strcmp(cmd, "valve") == 0 || strcmp(cmd, "shutoff") == 0) {
         cJSON *jstate = cJSON_GetObjectItem(msg, "state");
         const char *state = cJSON_IsString(jstate) ? jstate->valuestring : "close";
